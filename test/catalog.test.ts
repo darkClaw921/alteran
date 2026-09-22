@@ -137,7 +137,7 @@ describe('provider routing', () => {
     expect(reg.route(ref)).toBeUndefined();
   });
 
-  it('sends a pinned route without fallbacks and reads back the charged cost', async () => {
+  it('sends a pinned route as a whitelist without fallbacks and reads back the charged cost', async () => {
     let body: Record<string, unknown> | undefined;
     vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
       body = JSON.parse(String(init.body));
@@ -153,7 +153,8 @@ describe('provider routing', () => {
     for await (const ev of provider.stream({ model: 'm', system: 's', messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }], tools: [], maxTokens: 16, route: ['morph/fp8'] })) {
       if (ev.type === 'done') usage = ev.usage;
     }
-    expect(body?.provider).toEqual({ order: ['morph/fp8'], allow_fallbacks: false });
+    // `only` is what actually forbids another upstream; `order` only ranks the allowed ones.
+    expect(body?.provider).toEqual({ only: ['morph/fp8'], order: ['morph/fp8'], allow_fallbacks: false });
     expect(usage).toMatchObject({ inputTokens: 21, cacheReadTokens: 10, outputTokens: 8, cost: 0.00134511, currency: 'RUB' });
   });
 });

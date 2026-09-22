@@ -110,7 +110,9 @@ export class OpenAICompatProvider implements Provider {
     };
     if (req.temperature != null) body.temperature = req.temperature;
     // Gateways route to the cheapest upstream by default; a pinned route must not silently fall back.
-    if (req.route?.length) body.provider = { order: req.route, allow_fallbacks: false };
+    // `only` is the whitelist (nothing outside it may serve the request), `order` the preference
+    // inside it; `allow_fallbacks: false` keeps the gateway from stepping outside on an error.
+    if (req.route?.length) body.provider = { only: req.route, order: req.route, allow_fallbacks: false };
     if (req.reasoning && req.reasoning !== 'off') {
       if (this.opts.reasoningField === 'openrouter') body.reasoning = { effort: req.reasoning };
       else if (this.opts.reasoningField === 'openai') body.reasoning_effort = req.reasoning;
