@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matrix Rain</title>
+<style>
+  :root { --bg: #000; --green: #00ff41; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: var(--bg); overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+
+  /* vignette + scanlines */
+  .overlay {
+    position: fixed; inset: 0; pointer-events: none;
+    background:
+      repeating-linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0) 0px,
+        rgba(0, 0, 0, 0) 2px,
+        rgba(0, 0, 0, 0.25) 3px,
+        rgba(0, 0, 0, 0.25) 4px
+      ),
+      radial-gradient(ellipse at center, rgba(0,0,0,0) 40%, rgba(0,0,0,0.85) 100%);
+    mix-blend-mode: multiply;
+  }
+  .flicker {
+    position: fixed; inset: 0; pointer-events: none;
+    background: rgba(0, 255, 65, 0.03);
+    animation: flicker 4s steps(1) infinite;
+  }
+  @keyframes flicker {
+    0%, 96%, 100% { opacity: 0; }
+    97% { opacity: .6; }
+    98% { opacity: .1; }
+    99% { opacity: .4; }
+  }
+  .hint {
+    position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+    font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: rgba(0, 255, 65, .45); letter-spacing: .18em;
+    text-transform: uppercase; pointer-events: none;
+    animation: pulse 3s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: .25 } 50% { opacity: .7 } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="overlay"></div>
+<div class="flicker"></div>
+<div class="hint">click to reseed &nbsp;·&nbsp; move the mouse for a ripple</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  const CHARS = 'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ:・.=*+-<>¦｜╌';
+  const FONT_SIZE = 16;
+  const GLYPH = () => CHARS[(Math.random() * CHARS.length) | 0];
+
+  let cols = 0, rows = 0, dpr = 1;
+  let drops = [];      // y position per column (in rows)
+  let speeds = [];     // rows per frame per column
+  let glyphRows = [];  // per column: sparse map of pre-rendered glyph cells
+
+  const ripples = [];
+
+  function measure() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = window.innerWidth, h = window.innerHeight;
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.font = `${FONT_SIZE}px ui-monospace, "SF Mono", Menlo, Consolas, monospace`;
+    ctx.textBaseline = 'top';
+
+    const nextCols = Math.ceil(w / FONT_SIZE);
+    const nextRows = Math.ceil(h / FONT_SIZE);
+
+    if (nextCols !== cols) {
+      drops = new Array(nextCols).fill(0).map(() => Math.random() * -nextRows);
+      speeds = new Array(nextCols).fill(0).map(() => 0.35 + Math.random() * 0.75);
+      glyphRows = new Array(nextCols).fill(0).map(() => ({}));
+      cols = nextCols;
+    }
+    rows = nextRows;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  function fade() {
+    // trailing fade instead of a hard clear
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.07)';
+    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+  }
+
+  let frame = 0;
+  function draw() {
+    frame++;
+    fade();
+
+    for (let x = 0; x < cols; x++) {
+      const px = x * FONT_SIZE;
+      const headRow = Math.floor(drops[x]);
+      let boost = 0;
+
+      for (let r = 0; r < ripples.length; r++) {
+        const rp = ripples[r];
+        const d = Math.hypot(px - rp.x, headRow * FONT_SIZE - rp.y);
+        const band = Math.abs(d - rp.r);
+        if (band < FONT_SIZE * 2) boost = Math.max(boost, (1 - band / (FONT_SIZE * 2)) * rp.power);
+      }
+
+      // head: bright, near-white green
+      const headGlow = 0.75 + boost * 0.25;
+      ctx.shadowColor = 'rgba(0, 255, 65, 0.9)';
+      ctx.shadowBlur = 8 + boost * 22;
+      ctx.fillStyle = `rgba(200, 255, 210, ${Math.min(1, headGlow).toFixed(3)})`;
+      ctx.fillText(GLYPH(), px, headRow * FONT_SIZE);
+
+      // the row just behind the head: saturated green
+      ctx.shadowBlur = boost * 14;
+      ctx.fillStyle = `rgba(0, 255, 65, ${(0.85 * (1 + boost)).toFixed(3)})`;
+      ctx.fillText(GLYPH(), px, (headRow - 1) * FONT_SIZE);
+
+      ctx.shadowBlur = 0;
+
+      // speed up while a ripple passes, otherwise drift at the column's speed
+      drops[x] += speeds[x] * (1 + boost * 6);
+
+      // reset a column once it clears the bottom
+      if (drops[x] * FONT_SIZE > window.innerHeight + FONT_SIZE * 4) {
+        if (Math.random() < 0.02 + 0.06 * Math.random()) {
+          drops[x] = -Math.random() * 20;
+          speeds[x] = 0.35 + Math.random() * 0.75;
+        }
+      }
+    }
+
+    // advance ripples
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const rp = ripples[i];
+      rp.r += 9;
+      rp.power *= 0.965;
+      if (rp.power < 0.02) ripples.splice(i, 1);
+    }
+
+    requestAnimationFrame(draw);
+  }
+
+  window.addEventListener('resize', measure);
+  window.addEventListener('click', (e) => {
+    // reseed everything from the click point
+    for (let x = 0; x < cols; x++) {
+      drops[x] = -Math.random() * rows * 0.6;
+      speeds[x] = 0.35 + Math.random() * 0.75;
+    }
+    ripples.push({ x: e.clientX, y: e.clientY, r: 0, power: 2.2 });
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (frame % 3 === 0 && ripples.length < 6) {
+      ripples.push({ x: e.clientX, y: e.clientY, r: 0, power: 0.9 });
+    }
+  });
+
+  measure();
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

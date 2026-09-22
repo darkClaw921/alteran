@@ -1,0 +1,32 @@
+/** Live smoke test of the /model picker against the real provider catalog. */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { launch, sleep } from '../test/harness.js';
+
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alteran-pick-'));
+const { io } = await launch({ cwd: dir, mode: 'acceptEdits' }, 150, 40);
+await sleep(1500);
+for (const ch of '/model') io.key(ch);
+await sleep(300);
+io.key('\r');
+await sleep(6000);
+for (const ch of 'deepseek flash') io.key(ch);
+await sleep(600);
+console.log('--- MODELS ---\n' + io.screen());
+io.key('\u001b[C');
+await sleep(6000);
+io.key('\u001b[B');
+await sleep(300);
+io.key(' ');
+await sleep(300);
+io.key('\u001b[B');
+await sleep(300);
+io.key(' ');
+await sleep(400);
+console.log('--- PROVIDERS ---\n' + io.screen());
+io.key('\u001b');
+io.key('\u001b');
+await sleep(300);
+fs.rmSync(dir, { recursive: true, force: true });
+process.exit(0);

@@ -1,0 +1,1843 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      tailwind = { config: { corePlugins: { preflight: false } } };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono%3Awght%40100..800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *, ::before, ::after {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+      }
+    </style>
+
+    <style>
+      body {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+    </style>
+  </head>
+  <body style="background-color: #05080A">
+    <div
+      data-pencil-name="Altera Terminal"
+      class="box-border w-[1440px] h-[900px] flex flex-col gap-0 justify-start items-start bg-[#05080A] overflow-hidden"
+    >
+      <div
+        data-pencil-name="Top Bar"
+        class="box-border w-full h-fit shrink-0 flex flex-col gap-[2px] p-[12px_16px_0px_16px] justify-start items-start overflow-hidden"
+      >
+        <div
+          data-pencil-name="Title Row"
+          class="box-border w-full h-fit shrink-0 flex flex-row gap-[10px] justify-start items-center"
+        >
+          <div
+            data-pencil-name="Wordmark"
+            class="text-[13px]/[normal] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+          >
+            [ H E R M E S ]
+          </div>
+          <div
+            data-pencil-name="Tagline"
+            class="text-[12px]/[normal] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            == ANCIENT GATE NETWORK // ALTERA AGENT TERMINAL -- alteran v2.4 ==
+          </div>
+          <div
+            data-pencil-name="Spacer"
+            class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+          ></div>
+          <div
+            data-pencil-name="Status"
+            class="text-[12px]/[normal] box-border text-[#2BD9E8] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            ASTRIA PORTA: OPEN
+          </div>
+          <div
+            data-pencil-name="Sep1"
+            class="text-[12px]/[normal] box-border text-[#162A32] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            |
+          </div>
+          <div
+            data-pencil-name="Naq"
+            class="text-[12px]/[normal] box-border text-[#F0A73C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            CTX 74%
+          </div>
+          <div
+            data-pencil-name="Sep2"
+            class="text-[12px]/[normal] box-border text-[#162A32] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            |
+          </div>
+          <div
+            data-pencil-name="Clock"
+            class="text-[12px]/[normal] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            RUN 00:00:33
+          </div>
+        </div>
+        <div
+          data-pencil-name="Rule"
+          class="text-[12px]/[14px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+        >
+          ================================================================================================================================================================================================================================================
+        </div>
+      </div>
+      <div
+        data-pencil-name="Body"
+        class="box-border w-full [flex:1_1_0] flex flex-row gap-0 justify-start items-start"
+      >
+        <div
+          data-pencil-name="Gate Panel"
+          class="[box-sizing:content-box] w-[299.5px] shrink-0 h-[812px] flex flex-col gap-[10px] p-[14px_16px] justify-start items-start bg-[#0A1014] [border-width:0px_1px_0px_0px] [border-style:solid] [border-color:#162A32] [margin:0px_-0.5px_0px_0px]"
+        >
+          <div
+            data-pencil-name="Header GATE ARRAY"
+            class="box-border w-full h-fit shrink-0 flex flex-row gap-[8px] justify-start items-center"
+          >
+            <div
+              data-pencil-name="Title"
+              class="text-[10px]/[normal] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal tracking-[2.2px] text-left [white-space:nowrap]"
+            >
+              ASTRIA PORTA
+            </div>
+            <div
+              data-pencil-name="Rule"
+              class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start bg-[#162A32]"
+            ></div>
+            <div
+              data-pencil-name="Right"
+              class="text-[10px]/[normal] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal tracking-[1.2px] text-left [white-space:nowrap]"
+            >
+              9 gradus
+            </div>
+          </div>
+          <div
+            data-pencil-name="Gate ASCII"
+            class="box-border w-[278px] h-[280px] shrink-0 relative"
+          >
+            <div
+              data-pencil-name="Ring"
+              class="text-[11px]/[11px] box-border absolute left-0 top-0 text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap] [z-index:0]"
+            >
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;###&nbsp;&nbsp;&nbsp;#####&nbsp;&nbsp;&nbsp;###&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;######&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;######&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;###&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;###&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;####&nbsp;&nbsp;
+              <br />
+              ####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;####
+              <br />
+              ###&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;###
+              <br />
+              ####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;####
+              <br />
+              ####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;####
+              <br />
+              ####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;####
+              <br />
+              #&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&gt;&gt;&gt;#
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&gt;&gt;&gt;&gt;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&gt;&gt;&gt;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&gt;&gt;&gt;&gt;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;##&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;##&gt;&gt;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;####&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;####&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;vv####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;&nbsp;&nbsp;&nbsp;####&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;####vvvv#&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;######&nbsp;&nbsp;&nbsp;######v&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;###&nbsp;&nbsp;&nbsp;###&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+            </div>
+            <div
+              data-pencil-name="Horizon"
+              class="text-[11px]/[11px] box-border absolute left-0 top-0 text-[#2BD9E8] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap] [z-index:1]"
+            >
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~
+              ----~~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~~&nbsp;&nbsp;&nbsp;&nbsp;~~~--&nbsp;&nbsp;&nbsp;~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--~~~&nbsp;&nbsp;&nbsp;&nbsp;~~~&nbsp;&nbsp;&nbsp;--~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~~---&nbsp;&nbsp;~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~~---
+              ~~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~~&nbsp;&nbsp;&nbsp;&nbsp;-~~-&nbsp;&nbsp;&nbsp;&nbsp;~~~&nbsp;&nbsp;&nbsp;&nbsp;~~~-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[
+              RUNNING ]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;---~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--&nbsp;&nbsp;&nbsp;~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~~-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--~~~&nbsp;&nbsp;feat/gate-auth&nbsp;&nbsp;&nbsp;~~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~~---&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~&nbsp;&nbsp;&nbsp;&nbsp;-~~-&nbsp;&nbsp;&nbsp;&nbsp;~~~&nbsp;&nbsp;&nbsp;&nbsp;~~~--&nbsp;&nbsp;&nbsp;~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~&nbsp;&nbsp;---~~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~&nbsp;&nbsp;&nbsp;--~~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~~---&nbsp;&nbsp;~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~~-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~&nbsp;&nbsp;&nbsp;&nbsp;~~~&nbsp;&nbsp;&nbsp;&nbsp;-~~-&nbsp;&nbsp;&nbsp;&nbsp;~~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--
+              ~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~~
+              ---~~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~--&nbsp;&nbsp;&nbsp;~~~&nbsp;&nbsp;&nbsp;&nbsp;~~~---&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--~~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--
+              ~~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+            </div>
+            <div
+              data-pencil-name="Chevrons"
+              class="text-[11px]/[11px] box-border absolute left-0 top-0 text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap] [z-index:2]"
+            >
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^^&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^^&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^^^&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^^^&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^^^&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^^^&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;&lt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&gt;&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;&lt;&lt;&lt;&lt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&gt;&gt;&gt;&gt;&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&lt;&lt;&lt;&lt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&gt;&gt;&gt;&gt;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &lt;&lt;&lt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &lt;&lt;&lt;&lt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &lt;&lt;&lt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &lt;&lt;&lt;&lt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&lt;&lt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;vv&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;vvvv&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;v&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;vvv&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;vvv&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+            </div>
+          </div>
+          <div
+            data-pencil-name="Dial Sequence"
+            class="box-border w-full h-fit shrink-0 flex flex-col gap-[1px] justify-start items-start"
+          >
+            <div
+              data-pencil-name="H GRADUS"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="D1"
+                class="text-[11px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                --
+              </div>
+              <div
+                data-pencil-name="Lat"
+                class="text-[11px]/[18px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+              >
+                GRADUS
+              </div>
+              <div
+                data-pencil-name="Note"
+                class="text-[11px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                pipeline 8/9
+              </div>
+              <div
+                data-pencil-name="D2"
+                class="text-[11px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                ----------------
+              </div>
+            </div>
+            <div
+              data-pencil-name="Stage 1"
+              class="text-[11px]/[16px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              1 [#] ctx loaded ........ 0.4s
+            </div>
+            <div
+              data-pencil-name="Stage 2"
+              class="text-[11px]/[16px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              2 [#] plan 6 steps ...... 1.8s
+            </div>
+            <div
+              data-pencil-name="Stage 3"
+              class="text-[11px]/[16px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              3 [#] read 14 files ..... 2.3s
+            </div>
+            <div
+              data-pencil-name="Stage 4"
+              class="text-[11px]/[16px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              4 [#] patch 4 files ..... 6.1s
+            </div>
+            <div
+              data-pencil-name="Stage 5"
+              class="text-[11px]/[16px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              5 [#] typecheck ......... 3.9s
+            </div>
+            <div
+              data-pencil-name="Stage 6"
+              class="text-[11px]/[16px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              6 [#] unit tests 42/42 .. 11.2s
+            </div>
+            <div
+              data-pencil-name="Stage 7"
+              class="text-[11px]/[16px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              7 [#] lint + format ..... 1.4s
+            </div>
+            <div
+              data-pencil-name="Stage 8"
+              class="text-[11px]/[16px] box-border text-[#F0A73C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              8 [/] self-review ....... 4.7s
+            </div>
+            <div
+              data-pencil-name="Stage 9"
+              class="text-[11px]/[16px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              9 [ ] commit + push ..... --
+            </div>
+          </div>
+          <div
+            data-pencil-name="Origin"
+            class="text-[11px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            REPO&nbsp;&nbsp;&nbsp;&nbsp;sgc/altera-api
+            <br />
+            BRANCH&nbsp;&nbsp;feat/gate-auth&nbsp;&nbsp;^2 ahead
+            <br />
+            HEAD&nbsp;&nbsp;&nbsp;&nbsp;a3f91c2&nbsp;&nbsp;clean-&gt;dirty
+          </div>
+          <div
+            data-pencil-name="WT Header"
+            class="text-[11px]/[18px] box-border text-[#B8873C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            -- WORKING TREE 5 changed ---
+          </div>
+          <div
+            data-pencil-name="Working Tree"
+            class="box-border w-full h-fit shrink-0 flex flex-col gap-[1px] justify-start items-start"
+          >
+            <div
+              data-pencil-name="F src/gate/dial.ts"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="St"
+                class="text-[11px]/[17px] box-border text-[#F0A73C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                M
+              </div>
+              <div
+                data-pencil-name="Path"
+                class="text-[11px]/[17px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                src/gate/dial.ts
+              </div>
+              <div
+                data-pencil-name="Stat"
+                class="text-[11px]/[17px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                +42 -8
+              </div>
+            </div>
+            <div
+              data-pencil-name="F src/gate/iris.ts"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="St"
+                class="text-[11px]/[17px] box-border text-[#F0A73C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                M
+              </div>
+              <div
+                data-pencil-name="Path"
+                class="text-[11px]/[17px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                src/gate/iris.ts
+              </div>
+              <div
+                data-pencil-name="Stat"
+                class="text-[11px]/[17px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                +11 -3
+              </div>
+            </div>
+            <div
+              data-pencil-name="F src/gate/dial.test.ts"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="St"
+                class="text-[11px]/[17px] box-border text-[#5BD98A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                A
+              </div>
+              <div
+                data-pencil-name="Path"
+                class="text-[11px]/[17px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                src/gate/dial.test.ts
+              </div>
+              <div
+                data-pencil-name="Stat"
+                class="text-[11px]/[17px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                +96 -0
+              </div>
+            </div>
+            <div
+              data-pencil-name="F src/router.ts"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="St"
+                class="text-[11px]/[17px] box-border text-[#F0A73C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                M
+              </div>
+              <div
+                data-pencil-name="Path"
+                class="text-[11px]/[17px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                src/router.ts
+              </div>
+              <div
+                data-pencil-name="Stat"
+                class="text-[11px]/[17px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                +7 -2
+              </div>
+            </div>
+            <div
+              data-pencil-name="F notes/recon.md"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="St"
+                class="text-[11px]/[17px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                ??
+              </div>
+              <div
+                data-pencil-name="Path"
+                class="text-[11px]/[17px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                notes/recon.md
+              </div>
+              <div
+                data-pencil-name="Stat"
+                class="text-[11px]/[17px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                +18 -0
+              </div>
+            </div>
+          </div>
+          <div
+            data-pencil-name="Left Spacer"
+            class="box-border w-full [flex:1_1_0] flex flex-row gap-0 justify-start items-start"
+          ></div>
+          <div
+            data-pencil-name="Left Foot"
+            class="text-[11px]/[19px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            [F2] diff&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[F3] test watch
+            <br />
+            [F4] stages&nbsp;&nbsp;&nbsp;[F5] rerun stage
+          </div>
+        </div>
+        <div
+          data-pencil-name="Divider L"
+          class="text-[11px]/[13px] box-border text-[#162A32] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+        >
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+        </div>
+        <div
+          data-pencil-name="Console"
+          class="box-border [flex:1_1_0] h-full flex flex-col gap-0 p-[10px_18px] justify-start items-start bg-[#05080A]"
+        >
+          <div
+            data-pencil-name="Stream"
+            class="box-border w-full h-fit shrink-0 flex flex-col gap-0 justify-start items-start"
+          >
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                &gt;
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                add iris auth to the gate dialer, keep SG-1 tokens working
+              </div>
+              <div
+                data-pencil-name="Sp"
+                class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+              ></div>
+              <div
+                data-pencil-name="Time"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                00:00:00
+              </div>
+            </div>
+            <div
+              data-pencil-name="Blank"
+              class="box-border w-full h-[9px] shrink-0 flex flex-row gap-0 justify-start items-start"
+            ></div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                *
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                I'll wire iris.authorize() into the dialer, keep the legacy SG-1 path
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              ></div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                behind a compat flag, and cover the error paths with tests.
+              </div>
+            </div>
+            <div
+              data-pencil-name="Blank"
+              class="box-border w-full h-[9px] shrink-0 flex flex-row gap-0 justify-start items-start"
+            ></div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                *
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Read
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#2BD9E8] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                (src/gate/dial.ts)
+              </div>
+              <div
+                data-pencil-name="Sp"
+                class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+              ></div>
+              <div
+                data-pencil-name="Time"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                00:00:01
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                L
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Read 142 lines (ctrl+o to expand)
+              </div>
+            </div>
+            <div
+              data-pencil-name="Blank"
+              class="box-border w-full h-[9px] shrink-0 flex flex-row gap-0 justify-start items-start"
+            ></div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                *
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Search
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#2BD9E8] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                (pattern: "gate.open\(", path: "src")
+              </div>
+              <div
+                data-pencil-name="Sp"
+                class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+              ></div>
+              <div
+                data-pencil-name="Time"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                00:00:03
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                L
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Found 6 matches across 4 files
+              </div>
+            </div>
+            <div
+              data-pencil-name="Blank"
+              class="box-border w-full h-[9px] shrink-0 flex flex-row gap-0 justify-start items-start"
+            ></div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                *
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Update Todos
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#2BD9E8] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                ()
+              </div>
+              <div
+                data-pencil-name="Sp"
+                class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+              ></div>
+              <div
+                data-pencil-name="Time"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                00:00:04
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                L
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5BD98A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                [x] read gate + router modules
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              ></div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5BD98A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                [x] add iris.authorize() guard
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              ></div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#F0A73C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                [~] write dial.test.ts for denied tokens
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              ></div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                [ ] typecheck + unit tests
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              ></div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                [ ] fix 2 lint warnings in src/router.ts
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              ></div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                [ ] commit + open PR against main
+              </div>
+            </div>
+            <div
+              data-pencil-name="Blank"
+              class="box-border w-full h-[9px] shrink-0 flex flex-row gap-0 justify-start items-start"
+            ></div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                *
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Update
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#2BD9E8] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                (src/gate/dial.ts)
+              </div>
+              <div
+                data-pencil-name="Sp"
+                class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+              ></div>
+              <div
+                data-pencil-name="Time"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                00:00:07
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                L
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Updated src/gate/dial.ts with 42 additions and 8 removals
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              ></div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                118
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#E2564A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                - const session = await gate.open(address)
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              ></div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                118
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5BD98A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                + const token = await iris.authorize(address, ctx.actor)
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              ></div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                119
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5BD98A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                + if (!token.ok) throw new IrisDenied(token.reason)
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              ></div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                120
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5BD98A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                + const session = await gate.open(address, token)
+              </div>
+            </div>
+            <div
+              data-pencil-name="Blank"
+              class="box-border w-full h-[9px] shrink-0 flex flex-row gap-0 justify-start items-start"
+            ></div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                *
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Bash
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#2BD9E8] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                (pnpm vitest run src/gate)
+              </div>
+              <div
+                data-pencil-name="Sp"
+                class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+              ></div>
+              <div
+                data-pencil-name="Time"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                00:00:15
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                L
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5BD98A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                PASS src/gate/dial.test.ts 18 tests 1.9s
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              ></div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5BD98A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                PASS src/gate/iris.test.ts 24 tests 2.4s
+              </div>
+            </div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              ></div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Test Files 2 passed (2) Tests 42 passed (42)
+              </div>
+            </div>
+            <div
+              data-pencil-name="Blank"
+              class="box-border w-full h-[9px] shrink-0 flex flex-row gap-0 justify-start items-start"
+            ></div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#F0A73C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                *
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#F0A73C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                ! lint: 2 warnings in src/router.ts (no-floating-promises)
+              </div>
+              <div
+                data-pencil-name="Sp"
+                class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+              ></div>
+              <div
+                data-pencil-name="Time"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                00:00:29
+              </div>
+            </div>
+            <div
+              data-pencil-name="Blank"
+              class="box-border w-full h-[9px] shrink-0 flex flex-row gap-0 justify-start items-start"
+            ></div>
+            <div
+              data-pencil-name="Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#2BD9E8] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                *
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Dialing
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                ...
+              </div>
+              <div
+                data-pencil-name="Seg"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                (esc to interrupt - 47s - ^ 12.4k tokens - chevron 8/9)
+              </div>
+              <div
+                data-pencil-name="Sp"
+                class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+              ></div>
+              <div
+                data-pencil-name="Time"
+                class="text-[12px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                00:00:33
+              </div>
+            </div>
+          </div>
+          <div
+            data-pencil-name="Log Spacer"
+            class="box-border w-full [flex:1_1_0] flex flex-row gap-0 justify-start items-start"
+          ></div>
+          <div
+            data-pencil-name="Input Box"
+            class="box-border w-[759px] h-fit shrink-0 flex flex-col gap-0 justify-start items-start"
+          >
+            <div
+              data-pencil-name="Top"
+              class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              +-------------------------------------------------------------------------------------------------------+
+            </div>
+            <div
+              data-pencil-name="Input Line"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="B1"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                |
+              </div>
+              <div
+                data-pencil-name="Caret"
+                class="text-[12px]/[18px] box-border text-[#2BD9E8] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                &gt;
+              </div>
+              <div
+                data-pencil-name="Text"
+                class="text-[12px]/[18px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                fix the lint warnings, then commit and open the PR
+              </div>
+              <div
+                data-pencil-name="Cursor"
+                class="text-[12px]/[18px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+              >
+                _
+              </div>
+              <div
+                data-pencil-name="Sp"
+                class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+              ></div>
+              <div
+                data-pencil-name="B2"
+                class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                |
+              </div>
+            </div>
+            <div
+              data-pencil-name="Bottom"
+              class="text-[12px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              +-------------------------------------------------------------------------------------------------------+
+            </div>
+          </div>
+          <div
+            data-pencil-name="Hints"
+            class="text-[11px]/[20px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            ? for shortcuts ^R rerun stage ^C abort F2 diff F6 approve /iris permissions
+          </div>
+        </div>
+        <div
+          data-pencil-name="Divider R"
+          class="text-[11px]/[13px] box-border text-[#162A32] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+        >
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+          <br />
+          :
+        </div>
+        <div
+          data-pencil-name="Systems"
+          class="[box-sizing:content-box] w-[329.5px] shrink-0 h-[812px] flex flex-col gap-[10px] p-[14px_16px] justify-start items-start bg-[#0A1014] [border-width:0px_0px_0px_1px] [border-style:solid] [border-color:#162A32] [margin:0px_0px_0px_-0.5px]"
+        >
+          <div
+            data-pencil-name="H VIRES"
+            class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+          >
+            <div
+              data-pencil-name="D1"
+              class="text-[11px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              --
+            </div>
+            <div
+              data-pencil-name="Lat"
+              class="text-[11px]/[18px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+            >
+              VIRES
+            </div>
+            <div
+              data-pencil-name="Note"
+              class="text-[11px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              resources
+            </div>
+            <div
+              data-pencil-name="D2"
+              class="text-[11px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              --------------------------
+            </div>
+          </div>
+          <div
+            data-pencil-name="Bars"
+            class="text-[11px]/[17px] box-border text-[#F0A73C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            CONTEXT&nbsp;&nbsp;[###############-----]&nbsp;&nbsp;74% 148k/200k
+            <br />
+            RATE LIM [############--------]&nbsp;&nbsp;62% 37k tok/m
+            <br />
+            TESTS&nbsp;&nbsp;&nbsp;&nbsp;[####################] 100% 42/42
+            <br />
+            COVERAGE [################----]&nbsp;&nbsp;81% src/gate
+          </div>
+          <div
+            data-pencil-name="H NAQ DRAW  38m"
+            class="text-[11px]/[18px] box-border text-[#B8873C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            -- TOKEN BURN last 38m -------------------
+          </div>
+          <div
+            data-pencil-name="Graph"
+            class="text-[10px]/[12px] box-border text-[#2BD9E8] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^&nbsp;&nbsp;
+            <br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^^&nbsp;&nbsp;&nbsp;^|^^
+            <br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^^^||^^^||||
+            <br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^^^^||||||||||||
+            <br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^^^^^||||||||||||||||
+            <br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^^
+            ^|||||||||||||||||||||
+            <br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^^^^||^||||||||||||||||||||||
+            <br />
+            &nbsp;&nbsp;&nbsp;&nbsp;^ ^^^|||||||||||||||||||||||||||||
+            <br />
+            ^^^^|^||||||||||||||||||||||||||||||||
+            <br />
+            +-------------------------------------
+            <br />
+            0m&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;now
+          </div>
+          <div
+            data-pencil-name="H CONSILIUM"
+            class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+          >
+            <div
+              data-pencil-name="D1"
+              class="text-[11px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              --
+            </div>
+            <div
+              data-pencil-name="Lat"
+              class="text-[11px]/[18px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+            >
+              tasks
+            </div>
+            <div
+              data-pencil-name="Note"
+              class="text-[11px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              plan 4/6
+            </div>
+            <div
+              data-pencil-name="D2"
+              class="text-[11px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              --------------------
+            </div>
+          </div>
+          <div
+            data-pencil-name="T dhd.lookup  P4X-639"
+            class="text-[11px]/[17px] box-border text-[#5BD98A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            [x] read gate + router modules
+          </div>
+          <div
+            data-pencil-name="T dial + chevron lock"
+            class="text-[11px]/[17px] box-border text-[#5BD98A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            [x] add iris.authorize() guard
+          </div>
+          <div
+            data-pencil-name="T malp.telemetry stream"
+            class="text-[11px]/[17px] box-border text-[#5BD98A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            [x] write dial.test.ts (18)
+          </div>
+          <div
+            data-pencil-name="T surface survey report"
+            class="text-[11px]/[17px] box-border text-[#5BD98A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            [x] typecheck + unit tests
+          </div>
+          <div
+            data-pencil-name="T iris handshake + close"
+            class="text-[11px]/[17px] box-border text-[#F0A73C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            [/] fix 2 lint warnings
+          </div>
+          <div
+            data-pencil-name="T power-down sequence"
+            class="text-[11px]/[17px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            [ ] commit + open PR #412
+          </div>
+          <div
+            data-pencil-name="H EVENT LOG"
+            class="text-[11px]/[18px] box-border text-[#B8873C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            -- ACTIVITY -------------------------------
+          </div>
+          <div
+            data-pencil-name="Activity"
+            class="box-border w-full h-fit shrink-0 flex flex-col gap-[1px] justify-start items-start"
+          >
+            <div
+              data-pencil-name="Act self-review started"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Ev"
+                class="text-[11px]/[17px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                self-review started
+              </div>
+              <div
+                data-pencil-name="Sp"
+                class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+              ></div>
+              <div
+                data-pencil-name="T"
+                class="text-[11px]/[17px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                00:00:31
+              </div>
+            </div>
+            <div
+              data-pencil-name="Act lint  2 warnings"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Ev"
+                class="text-[11px]/[17px] box-border text-[#F0A73C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                lint 2 warnings
+              </div>
+              <div
+                data-pencil-name="Sp"
+                class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+              ></div>
+              <div
+                data-pencil-name="T"
+                class="text-[11px]/[17px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                00:00:29
+              </div>
+            </div>
+            <div
+              data-pencil-name="Act vitest  42 passed"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Ev"
+                class="text-[11px]/[17px] box-border text-[#5BD98A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                vitest 42 passed
+              </div>
+              <div
+                data-pencil-name="Sp"
+                class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+              ></div>
+              <div
+                data-pencil-name="T"
+                class="text-[11px]/[17px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                00:00:26
+              </div>
+            </div>
+            <div
+              data-pencil-name="Act typecheck  ok"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+            >
+              <div
+                data-pencil-name="Ev"
+                class="text-[11px]/[17px] box-border text-[#5BD98A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                typecheck ok
+              </div>
+              <div
+                data-pencil-name="Sp"
+                class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+              ></div>
+              <div
+                data-pencil-name="T"
+                class="text-[11px]/[17px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                00:00:11
+              </div>
+            </div>
+          </div>
+          <div
+            data-pencil-name="H CLIPEUS"
+            class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-start items-start"
+          >
+            <div
+              data-pencil-name="D1"
+              class="text-[11px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              --
+            </div>
+            <div
+              data-pencil-name="Lat"
+              class="text-[11px]/[18px] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+            >
+              CLIPEUS
+            </div>
+            <div
+              data-pencil-name="Note"
+              class="text-[11px]/[18px] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              iris shield
+            </div>
+            <div
+              data-pencil-name="D2"
+              class="text-[11px]/[18px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              --------------------
+            </div>
+          </div>
+          <div
+            data-pencil-name="Iris"
+            class="text-[11px]/[17px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            WRITE&nbsp;&nbsp;&nbsp;[#] repo only (src/**, test/**)
+            <br />
+            BASH&nbsp;&nbsp;&nbsp;&nbsp;[#] allowlist: pnpm git node
+            <br />
+            NETWORK [ ] blocked - ask to open
+            <br />
+            APPROVE [/] auto for reversible edits
+          </div>
+          <div
+            data-pencil-name="Right Spacer"
+            class="box-border w-full [flex:1_1_0] flex flex-row gap-0 justify-start items-start"
+          ></div>
+          <div
+            data-pencil-name="Brief Header"
+            class="text-[11px]/[18px] box-border text-[#B8873C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            -- TASK -----------------------------------
+          </div>
+          <div
+            data-pencil-name="Brief"
+            class="text-[11px]/[16px] box-border text-[#CFE3E6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            add iris auth to the gate dialer, keep
+            <br />
+            SG-1 tokens back-compat, cover error
+            <br />
+            paths, open PR against main.
+          </div>
+        </div>
+      </div>
+      <div
+        data-pencil-name="Bottom Rule"
+        class="text-[12px]/[12px] box-border text-[#5E4623] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+      >
+        ================================================================================================================================================================================================================================================
+      </div>
+      <div
+        data-pencil-name="Status Bar"
+        class="box-border w-full h-fit shrink-0 flex flex-row gap-[14px] p-[6px_16px_10px_16px] justify-start items-center overflow-hidden"
+      >
+        <div
+          data-pencil-name="S MODE: AUTONOMOUS"
+          class="text-[11px]/[normal] box-border text-[#E8C77A] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+        >
+          MODE: AUTONOMOUS
+        </div>
+        <div
+          data-pencil-name="S |"
+          class="text-[11px]/[normal] box-border text-[#162A32] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+        >
+          |
+        </div>
+        <div
+          data-pencil-name="S MODEL: altera-core"
+          class="text-[11px]/[normal] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+        >
+          MODEL: altera-core
+        </div>
+        <div
+          data-pencil-name="S |"
+          class="text-[11px]/[normal] box-border text-[#162A32] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+        >
+          |
+        </div>
+        <div
+          data-pencil-name="S TOOLS: dhd malp iris telemetry"
+          class="text-[11px]/[normal] box-border text-[#5C7A80] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+        >
+          TOOLS: read edit bash test git
+        </div>
+        <div
+          data-pencil-name="Spacer"
+          class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+        ></div>
+        <div
+          data-pencil-name="S WH WINDOW 38:00 REMAINING 00:59"
+          class="text-[11px]/[normal] box-border text-[#F0A73C] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+        >
+          BUDGET 148k/200k - 26% LEFT
+        </div>
+        <div
+          data-pencil-name="S |"
+          class="text-[11px]/[normal] box-border text-[#162A32] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+        >
+          |
+        </div>
+        <div
+          data-pencil-name="S [ ^ EARTH ]"
+          class="text-[11px]/[normal] box-border text-[#2BD9E8] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+        >
+          [ ^ origin/main ]
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

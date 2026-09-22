@@ -1,0 +1,25 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { launch, sleep } from '../test/harness.js';
+
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'alteran-home-'));
+process.env.ALTERAN_HOME = home;
+fs.writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ panels: true }));
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alteran-panelanim-'));
+const { io } = await launch({ cwd: dir, model: 'ollama:test' }, 200, 40);
+await sleep(900);
+io.clear();
+await sleep(800);
+console.log('startup, before the first prompt:', io.text().length, 'bytes');
+io.key('/mode default');
+await sleep(150);
+io.key('\r');
+await sleep(150);
+io.key('\r');
+await sleep(800);
+io.clear();
+await sleep(1200);
+console.log('after work started, idle:', io.text().length, 'bytes');
+console.log('panels visible:', io.screen().includes('-- ASTRIA PORTA ---'));
+process.exit(0);
