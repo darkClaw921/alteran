@@ -113,6 +113,20 @@ export const SettingsSchema = z
     /** Older alias for `budget.tokens`. */
     budgetTokens: z.number().optional(),
     /**
+     * Where `WebSearch` sends its queries. No default: an unconfigured search says so and stops
+     * instead of scraping a results page, which would break as soon as the markup changed.
+     */
+    webSearch: z
+      .object({
+        provider: z.enum(['brave', 'tavily', 'searxng']).optional(),
+        /** Falls back to BRAVE_API_KEY / TAVILY_API_KEY in the environment. */
+        apiKey: z.string().optional(),
+        /** Required for searxng; optional host override otherwise. */
+        baseURL: z.string().optional(),
+        count: z.number().int().min(1).max(20).optional(),
+      })
+      .optional(),
+    /**
      * Free trimming of the window before the paid full compaction: old tool results are replaced by a
      * one-line note. `keepRecent` protects the results a turn is still working from, `threshold` is the
      * share of the window at which trimming starts (kept below `autoCompactThreshold`).

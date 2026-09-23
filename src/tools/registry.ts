@@ -4,6 +4,7 @@ import { BashOutputTool, BashTool, KillShellTool } from './bash.js';
 import { EditTool, MultiEditTool, ReadTool, WriteTool } from './fs-tools.js';
 import { AskUserQuestionTool, ExitPlanModeTool, TodoWriteTool, WebFetchTool } from './misc-tools.js';
 import { GlobTool, GrepTool } from './search-tools.js';
+import { WebSearchTool } from './web-search.js';
 import {
   ListAgentsTool,
   ListMcpResourcesTool,
@@ -37,6 +38,7 @@ export const BUILTIN_TOOLS: Tool<any>[] = [
   MultiEditTool,
   WriteTool,
   WebFetchTool,
+  WebSearchTool,
   TodoWriteTool,
   AskUserQuestionTool,
   ExitPlanModeTool,
@@ -58,7 +60,6 @@ export const TOOL_ALIASES: Record<string, string[]> = {
   LS: ['Glob', 'Bash'],
   NotebookEdit: ['Edit'],
   NotebookRead: ['Read'],
-  WebSearch: ['WebFetch'],
   TodoRead: ['TodoWrite'],
   Agent: ['Task'],
 };

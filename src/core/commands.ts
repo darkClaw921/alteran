@@ -1,5 +1,7 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { clipboardImage, loadImage } from './attachments.js';
 import { parseFrontmatter } from '../compat/frontmatter.js';
 import type { CommandDef } from '../compat/types.js';
 import { PermissionModeSchema, updateUserSettings, type PermissionMode } from '../config/settings.js';
@@ -55,6 +57,11 @@ const BUILTIN: SlashCommandInfo[] = [
   { name: 'context', description: 'What the context window is spent on', origin: 'builtin' },
   { name: 'init', description: 'Create ALTERAN.md with codebase guidance', origin: 'builtin' },
   { name: 'diff', description: 'Show working tree diff', origin: 'builtin' },
+  { name: 'attach', description: 'Attach an image file to the next message', hint: '<path>', origin: 'builtin' },
+  { name: 'paste', description: 'Attach the image on the clipboard to the next message', origin: 'builtin' },
+  { name: 'checkpoints', description: 'List the edits this session can undo', origin: 'builtin' },
+  { name: 'undo', description: 'Revert the last edit(s) this session made', hint: '[count | all]', origin: 'builtin' },
+  { name: 'redo', description: 'Re-apply the last undone edit(s)', hint: '[count | all]', origin: 'builtin' },
   { name: 'exit', description: 'Quit', origin: 'builtin' },
 ];
 
@@ -101,6 +108,84 @@ async function expandCommand(rt: Runtime, cmd: CommandDef, args: string): Promis
   return body;
 }
 
+/**
+ * `/attach <path>` and `/paste` queue an image for the next message. The file is checked here, at
+ * the moment the user asks for it, so a bad path or an oversized image is reported now rather than
+ * turning into a mysterious missing attachment later.
+ */
+function attachCommand(rt: Runtime, name: string, args: string): CommandResult {
+  if (name === 'paste') {
+    const got = clipboardImage();
+    if ('error' in got) return { kind: 'error', text: got.error };
+    const file = path.join(os.tmpdir(), `alteran-paste-${Date.now()}.png`);
+    try {
+      fs.writeFileSync(file, Buffer.from(got.block.data, 'base64'));
+    } catch (e) {
+      return { kind: 'error', text: `Could not save the pasted image: ${(e as Error).message}` };
+    }
+    rt.pendingImages.push(file);
+    return { kind: 'info', text: `Clipboard image queued from ${got.source}; it will be attached to your next message.` };
+  }
+
+  if (!args) return { kind: 'error', text: 'Usage: /attach <path to an image>' };
+  const resolved = path.resolve(rt.cwd, args.startsWith('~/') ? path.join(process.env.HOME ?? '', args.slice(2)) : args);
+  const loaded = loadImage(resolved);
+  if ('error' in loaded) return { kind: 'error', text: loaded.error };
+  rt.pendingImages.push(resolved);
+  const rel = path.relative(rt.cwd, resolved);
+  return { kind: 'info', text: `Attached ${rel && !rel.startsWith('..') ? rel : resolved}; it will ride with your next message.` };
+}
+
+/**
+ * `/checkpoints`, `/undo` and `/redo` over the session's write history. Undo moves files, so it also
+ * forgets what each restored file looked like: the next Edit must Read it again rather than trust a
+ * mtime from before the rollback.
+ */
+function checkpointCommand(rt: Runtime, name: string, args: string): CommandResult {
+  const cp = rt.checkpoints;
+  const rel = (f: string) => {
+    const r = path.relative(rt.cwd, f);
+    return r && !r.startsWith('..') && !path.isAbsolute(r) ? r : f;
+  };
+  const howMany = (applied: number): number => {
+    if (!args) return 1;
+    if (args === 'all') return applied;
+    const n = Number(args);
+    if (!Number.isInteger(n) || n < 1) return -1;
+    return n;
+  };
+
+  if (name === 'checkpoints') {
+    const rows = cp.list();
+    if (!rows.length) return { kind: 'info', text: 'No edits recorded in this session yet.' };
+    return {
+      kind: 'info',
+      text: [
+        `${cp.appliedCount} of ${rows.length} edits applied; /undo reverts the last, /redo re-applies it.`,
+        ...rows
+          .slice()
+          .reverse()
+          .slice(0, 25)
+          .map((e) => `${e.applied ? '[x]' : '[ ]'} ${String(e.seq).padStart(3)}  ${e.tool.padEnd(9)} ${rel(e.file)}${e.skipped ? '  (too large to revert)' : ''}`),
+      ].join('\n'),
+    };
+  }
+
+  const undone = name === 'undo';
+  const available = undone ? cp.appliedCount : cp.total - cp.appliedCount;
+  if (!available) return { kind: 'info', text: undone ? 'Nothing to undo in this session.' : 'Nothing to redo.' };
+  const count = howMany(available);
+  if (count < 0) return { kind: 'error', text: `Usage: /${name} [count | all]` };
+  const n = Math.min(count, available);
+  const { files, skipped } = undone ? cp.undo(n) : cp.redo(n);
+  for (const f of files) rt.fileState.delete(f);
+
+  const verb = undone ? 'Reverted' : 'Re-applied';
+  const lines = [`${verb} ${n} edit${n === 1 ? '' : 's'} (${files.length} file${files.length === 1 ? '' : 's'} changed):`, ...files.map((f) => `  ${rel(f)}`)];
+  if (skipped.length) lines.push(`Could not restore ${skipped.length} file(s) — too large to have been copied:`, ...skipped.map((f) => `  ${rel(f)}`));
+  return { kind: 'info', text: lines.join('\n') };
+}
+
 function tracker(rt: Runtime): TrackerStore | undefined {
   if (!rt.tracker) {
     const found = TrackerStore.discover(rt.cwd);
@@ -127,6 +212,13 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
       return { kind: 'ui', action: 'resume', arg: args || undefined };
     case 'diff':
       return { kind: 'ui', action: 'diff' };
+    case 'attach':
+    case 'paste':
+      return attachCommand(rt, name, args);
+    case 'checkpoints':
+    case 'undo':
+    case 'redo':
+      return checkpointCommand(rt, name, args);
     case 'context':
       return { kind: 'ui', action: 'context' };
     case 'copy':

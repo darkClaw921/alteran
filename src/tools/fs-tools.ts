@@ -110,6 +110,7 @@ export const WriteTool: Tool<{ file_path: string; content: string }> = {
     const before = existed ? fs.readFileSync(file, 'utf8') : '';
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, input.content);
+    ctx.runtime.checkpoints.record({ file, before: existed ? before : null, after: input.content, tool: 'Write' });
     markSeen(ctx, file);
     const d = lineDiff(before, input.content);
     const lines = input.content.split('\n').length;
@@ -152,6 +153,7 @@ async function editFile(ctx: ToolContext, filePath: string, edits: EditSpec[]) {
     content = r.result;
   }
   fs.writeFileSync(file, content);
+  ctx.runtime.checkpoints.record({ file, before, after: content, tool: edits.length > 1 ? 'MultiEdit' : 'Edit' });
   markSeen(ctx, file);
   const d = lineDiff(before, content);
   const rel = displayPath(ctx, file);

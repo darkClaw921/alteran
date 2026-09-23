@@ -18,6 +18,7 @@ import { BUILTIN_TOOLS, MAIN_ONLY_TOOLS, ORCHESTRATION_TOOLS, TOOL_ALIASES } fro
 import type { Tool } from '../tools/types.js';
 import { addUsage, emptyUsage, promptTokens, textOf, type Usage } from '../types.js';
 import { Agent, type AgentHandle } from './agent.js';
+import { CheckpointStore } from './checkpoints.js';
 import { AgentRuns, notification, type AgentResult, type SpawnRequest } from './agents.js';
 import { EventBus } from './events.js';
 import { gitSnapshot, mainSystemPrompt, type EnvInfo, type PromptCapabilities } from './prompt.js';
@@ -82,6 +83,10 @@ export class Runtime {
   main!: Agent;
   readonly agents: AgentRuns;
   readonly schedule: Scheduler;
+  /** Undo/redo for file writes; every editing tool records into it. */
+  readonly checkpoints: CheckpointStore;
+  /** Image files queued with `/attach` or `/paste`, picked up by the next user message. */
+  readonly pendingImages: string[] = [];
   private mcpRoster: Tool<any>[] = [];
   onCompacted?: (agent: Agent) => void;
   /**
@@ -119,6 +124,7 @@ export class Runtime {
     else if (opts.resume) resumeFile = SessionStore.list(this.root).find((s) => s.id.startsWith(opts.resume!))?.file;
     const resumeId = resumeFile ? path.basename(resumeFile, '.jsonl') : undefined;
     this.session = new SessionStore(this.root, { cwd: this.cwd, root: this.root, model: this.model.id }, resumeId);
+    this.checkpoints = new CheckpointStore(CheckpointStore.fileFor(this.root, this.session.id));
 
     this.hooks = buildHookRunner(this.ext.hookSources, {
       sessionId: this.session.id,
@@ -329,6 +335,7 @@ export class Runtime {
     this.budgetWarned = false;
     this.main.messages = messages;
     this.resumedId = id;
+    this.checkpoints.retarget(CheckpointStore.fileFor(this.root, id));
     this.main.contextTokens = messages.reduce((n, m) => n + estimateTokens(JSON.stringify(m.content)), 0);
     // No notice here: each front end prints its own line, and the TUI also replays the transcript.
     return { id, messages: messages.length };

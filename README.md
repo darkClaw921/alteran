@@ -67,6 +67,9 @@ br ready                       # beads видит ровно те же зада�
 | | |
 | --- | --- |
 | **Агент** | цикл модель ↔ инструменты, параллельные read-only вызовы, прерывание по `Esc`, автокомпакция контекста, сессии с `--continue` / `--resume` |
+| **Откат правок** | чекпоинт на каждую правку: `/undo`, `/redo`, `/undo all`, `/checkpoints`; история переживает `--resume` |
+| **Расход** | `budget.tokens` / `budget.cost` проверяются до запроса к модели; `/budget` показывает, `/budget reset` снимает предупреждение |
+| **Веб-поиск** | `WebSearch` с настраиваемым бэкендом (brave, tavily, searxng); без настройки инструмент честно говорит об этом, а не выдумывает результаты |
 | **Кеш промпта** | префикс держится стабильным: реестр инструментов заморожен между ходами, снимок git берётся один раз, компактор и субагенты переиспользуют тот же префикс; метки на system и на последнем сообщении, TTL 1 час; доля чтения из кеша видна в `/context` |
 | **Оркестрация** | `Task` (блокирующий или фоновый), `SendMessage` — продолжение агента с его контекстом, `ListAgents`, `TaskStop`; вложенность по бюджету глубины, свой транскрипт у каждого агента |
 | **Провайдеры** | Anthropic (adaptive thinking, prompt caching), OpenAI Responses API, любые OpenAI-совместимые — OpenRouter, **polza.ai**, Ollama, LM Studio. Модель задаётся как `provider:model` |
@@ -163,7 +166,11 @@ Session 9830989d saved — 12 messages.
 
 ## Команды
 
-`/help`, `/plan`, `/create-tasks`, `/run-phase N`, `/schedule`, `/phases`, `/tasks`, `/mode`, `/iris`, `/model`, `/models`, `/context`, `/copy`, `/bare`, `/mouse`, `/reasoning`, `/compact`, `/budget`, `/clear`, `/resume`, `/mcp`, `/skills`, `/agents`, `/plugins`, `/status`, `/init`, `/diff`, `/exit` — плюс все команды и скиллы, найденные в Claude Code, Codex и плагинах.
+`/help`, `/plan`, `/create-tasks`, `/run-phase N`, `/schedule`, `/phases`, `/tasks`, `/mode`, `/iris`, `/model`, `/models`, `/context`, `/copy`, `/bare`, `/mouse`, `/reasoning`, `/compact`, `/budget`, `/attach`, `/paste`, `/checkpoints`, `/undo`, `/redo`, `/clear`, `/resume`, `/mcp`, `/skills`, `/agents`, `/plugins`, `/status`, `/init`, `/diff`, `/exit` — плюс все команды и скиллы, найденные в Claude Code, Codex и плагинах.
+
+**Вложения.** Картинку можно приложить прямо в тексте — `@shot.png` — или командами `/attach <path>` и `/paste` (изображение из буфера). Она уходит в модели как `ImageBlock` перед сообщением, а в консоли появляется подтверждение с числом картинок и размером. В headless-режиме работает то же самое через путь в промпте.
+
+**Откат правок.** Каждая правка (`Write`, `Edit`, `MultiEdit`) оставляет чекпоинт — обе версии файла целиком, поэтому `/undo` возвращает к состоянию до неё, а `/redo` применяет обратно. `/undo all` откатывает всю сессию, `/checkpoints` показывает историю. Новая правка после отката обнуляет ветку redo, как в редакторе. История живёт в файле сессии и переживает `--resume`, отложенные и фоновые правки откатываются наравне с остальными. Файлы больше 2 МБ записываются в историю, но не копируются — `/undo` честно скажет, что не может их вернуть.
 
 CLI: `alteran tasks …`, `alteran models [provider] [фильтр]`, `alteran mcp [list|test]`, `alteran skills|agents|plugins|commands`, `alteran sessions`, `alteran doctor`.
 
@@ -188,6 +195,7 @@ CLI: `alteran tasks …`, `alteran models [provider] [фильтр]`, `alteran m
   "agents": { "maxDepth": 2, "maxConcurrent": 8 },
   "budget": { "tokens": 2000000, "cost": 5, "onExceed": "warn" },
   "microcompact": { "keepRecent": 8, "threshold": 0.6 },
+  "webSearch": { "provider": "brave", "apiKey": "…", "count": 5 },
   "cache": { "ttl": "1h" },
   "theme": "dark",
   "panels": false,

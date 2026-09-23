@@ -11,11 +11,13 @@ import {
   type ContentBlock,
   type Message,
   type StopReason,
+  type ImageBlock,
   type ToolResultBlock,
   type ToolUseBlock,
   type Usage,
 } from '../types.js';
 import { notification } from './agents.js';
+import { describeImages, drainImages, imageRefs } from './attachments.js';
 import type { TodoItem } from './events.js';
 import type { Runtime } from './runtime.js';
 import { isReadOnly, type Tool, type ToolOutput } from '../tools/types.js';
@@ -172,6 +174,25 @@ export class Agent implements AgentHandle {
     }
     // A turn boundary is the one safe moment to let newly connected servers into the tool roster.
     rt.syncTools();
+    // Images ride in front of the message that carries them: queued attachments first (/attach,
+    // /paste), then any image named with `@path` in the text itself. Subagents get neither — their
+    // prompt comes from another agent, not from the person who has pictures to show.
+    const images: ImageBlock[] = [];
+    if (this.isMain) {
+      const queued = drainImages(rt.pendingImages.splice(0));
+      for (const e of queued.errors) rt.bus.emit({ type: 'notice', level: 'warn', text: e });
+      images.push(...queued.blocks);
+      if (typeof input === 'string') {
+        const refs = imageRefs(input, rt.cwd);
+        for (const img of refs.images) {
+          if ('error' in img) rt.bus.emit({ type: 'notice', level: 'warn', text: img.error });
+          else images.push(img.block);
+        }
+        input = refs.text;
+      }
+      const note = describeImages(images);
+      if (note) rt.bus.emit({ type: 'notice', level: 'info', text: note });
+    }
     const text = typeof input === 'string' ? input : textOf(input);
     const extra = [...this.pendingContext];
     this.pendingContext = [];
@@ -190,7 +211,7 @@ export class Agent implements AgentHandle {
       extra.push(...hook.context);
       for (const m of hook.messages) rt.bus.emit({ type: 'notice', level: 'info', text: m });
     }
-    const content: ContentBlock[] = [...this.reminder(extra), ...(typeof input === 'string' ? [{ type: 'text' as const, text: input }] : input)];
+    const content: ContentBlock[] = [...this.reminder(extra), ...images, ...(typeof input === 'string' ? [{ type: 'text' as const, text: input }] : input)];
     this.push({ role: 'user', content });
     rt.bus.emit({ type: 'user_message', agentId: this.id, text });
     return this.loop(signal);
