@@ -137,6 +137,46 @@ describe('provider routing', () => {
     expect(reg.route(ref)).toBeUndefined();
   });
 
+  it('marks the cache on the system and on the newest message of a tool loop', async () => {
+    let body: Record<string, unknown> | undefined;
+    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+      body = JSON.parse(String(init.body));
+      return new Response('data: [DONE]\n\n', { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    });
+    const provider = new OpenAICompatProvider({ id: 'polza', apiKey: 'k', baseURL: 'https://polza.ai/api/v1', anthropicCaching: true });
+    const messages = [
+      { role: 'user' as const, content: [{ type: 'text' as const, text: 'find it' }] },
+      { role: 'assistant' as const, content: [{ type: 'tool_use' as const, id: 'c1', name: 'Grep', input: {} }] },
+      { role: 'user' as const, content: [{ type: 'tool_result' as const, toolUseId: 'c1', content: 'three hits' }] },
+    ];
+    for await (const _ of provider.stream({ model: 'anthropic/claude-sonnet-4.6', system: 's', messages, tools: [], maxTokens: 16, cacheTtl: '1h' })) {
+      // drain
+    }
+    const sent = (body?.messages ?? []) as Array<{ role: string; content: unknown }>;
+    const marked = sent.filter((m) => JSON.stringify(m.content).includes('cache_control'));
+    // One breakpoint covers tools+system, the other the conversation so far. A tool loop usually
+    // ends on a tool message, so looking only for a user message left the whole loop uncached.
+    expect(marked.map((m) => m.role)).toEqual(['system', 'tool']);
+    expect(JSON.stringify(marked[1].content)).toContain('"ttl":"1h"');
+  });
+
+  it('falls back to the last user message when a turn ends without tool results', async () => {
+    let body: Record<string, unknown> | undefined;
+    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+      body = JSON.parse(String(init.body));
+      return new Response('data: [DONE]\n\n', { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    });
+    const provider = new OpenAICompatProvider({ id: 'polza', apiKey: 'k', baseURL: 'https://polza.ai/api/v1', anthropicCaching: true });
+    const messages = [{ role: 'user' as const, content: [{ type: 'text' as const, text: 'just a question' }] }];
+    for await (const _ of provider.stream({ model: 'anthropic/claude-sonnet-4.6', system: 's', messages, tools: [], maxTokens: 16 })) {
+      // drain
+    }
+    const sent = (body?.messages ?? []) as Array<{ role: string; content: unknown }>;
+    expect(sent.filter((m) => JSON.stringify(m.content).includes('cache_control')).map((m) => m.role)).toEqual(['system', 'user']);
+    // Without an explicit TTL the request carries the provider default, not an invented one.
+    expect(JSON.stringify(sent)).not.toContain('"ttl"');
+  });
+
   it('sends a pinned route as a whitelist without fallbacks and reads back the charged cost', async () => {
     let body: Record<string, unknown> | undefined;
     vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {

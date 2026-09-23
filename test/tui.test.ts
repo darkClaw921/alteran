@@ -9,6 +9,10 @@ import { applyTheme, C, type ThemeName } from '../src/tui/theme.js';
 import { StageTracker, parseTestOutput } from '../src/tui/stages.js';
 import { projectSlug } from '../src/config/paths.js';
 import { TUNNEL_START, introFrame, playIntro } from '../src/tui/intro.js';
+import { Runtime } from '../src/core/runtime.js';
+import { UiStore } from '../src/tui/store.js';
+import { agentLines, agentsNote } from '../src/tui/components/AgentsPanel.js';
+import { scheduleLines, scheduleNote } from '../src/tui/components/SchedulePanel.js';
 
 let dir: string;
 let home: string;
@@ -250,6 +254,27 @@ describe('terminal UI', () => {
     expect(io.screen()).toContain('Allow rules:');
     io.key('\u0003');
     await sleep(300);
+    io.key('\u0003');
+    await sleep(300);
+  }, 30000);
+
+  it('always shows the schedule slot, and gives it the working tree only while nothing is deferred', async () => {
+    withPanels({ intro: false });
+    const { io } = await launch({ cwd: dir, model: 'ollama:test', mode: 'autonomous' }, 200, 44);
+    await sleep(700);
+    const idle = io.screen();
+    expect(idle).toContain('SCHEDULE');
+    expect(idle).toContain('(nothing scheduled)');
+    expect(idle).toContain('WORKING TREE');
+
+    for (const ch of '/schedule 10m re-run the tests') io.key(ch);
+    // Ink batches keystrokes that arrive in one chunk, so Enter needs a tick of its own.
+    await sleep(400);
+    io.key('\r');
+    await untilScreen(io, '1 pending');
+    const busy = io.screen();
+    expect(busy).toContain('re-run the tests');
+    expect(busy).not.toContain('WORKING TREE');
     io.key('\u0003');
     await sleep(300);
   }, 30000);
@@ -592,4 +617,85 @@ describe('terminal UI', () => {
   }, 30000);
 
 
+});
+
+describe('AGENTS panel', () => {
+  const text = (lines: ReturnType<typeof agentLines>) => lines.map((l) => l.map((sgm) => sgm.text).join('')).join('\n');
+
+  it('shows delegated agents as a tree with what each is doing', async () => {
+    const rt = await Runtime.create({ cwd: dir, noMcp: true, model: 'ollama:test' });
+    const store = new UiStore(rt);
+    expect(text(agentLines(store, 40, 6))).toContain('nothing delegated');
+
+    rt.bus.emit({ type: 'agent_start', agentId: 'agent-1', name: 'Explore-1', label: 'Explore: map the repo', parentId: 'main', depth: 1, model: 'ollama:test', background: true });
+    rt.bus.emit({ type: 'agent_start', agentId: 'agent-2', name: 'general-purpose-2', label: 'general-purpose: patch it', parentId: 'agent-1', depth: 2, model: 'ollama:test' });
+    rt.bus.emit({ type: 'status', agentId: 'agent-2', state: 'tool', detail: 'Grep' });
+
+    // Children follow the agent that launched them, indented one level.
+    expect(store.agentTree().map((r) => r.name)).toEqual(['Explore-1', 'general-purpose-2']);
+    const running = text(agentLines(store, 40, 6));
+    expect(running).toContain('> Explore-1 ~');
+    expect(running).toContain('  > general-purpose-2');
+    expect(running).toContain('Grep');
+    expect(agentsNote(store)).toBe('2 running');
+
+    rt.bus.emit({ type: 'agent_end', agentId: 'agent-2', name: 'general-purpose-2', label: 'general-purpose', ok: true, summary: 'patched' });
+    expect(store.agentRows.get('agent-2')!.state).toBe('done');
+    expect(text(agentLines(store, 40, 6))).toContain('+ general-purpose-2');
+    expect(agentsNote(store)).toBe('1 running');
+    await rt.shutdown();
+  });
+
+  it('survives events for agents it never saw start', async () => {
+    const rt = await Runtime.create({ cwd: dir, noMcp: true, model: 'ollama:test' });
+    const store = new UiStore(rt);
+    // A resumed transcript or a dropped event can leave an end without its start.
+    rt.bus.emit({ type: 'agent_end', agentId: 'ghost', name: 'ghost-1', label: 'ghost', ok: true, summary: 'x' });
+    rt.bus.emit({ type: 'status', agentId: 'ghost', state: 'tool', detail: 'Read' });
+    expect(store.agentTree()).toEqual([]);
+
+    // An agent whose parent is unknown still has to be listed, not swallowed by the tree walk.
+    rt.bus.emit({ type: 'agent_start', agentId: 'orphan', name: 'Explore-9', label: 'Explore: x', parentId: 'nobody', depth: 1, model: 'ollama:test' });
+    expect(store.agentTree().map((r) => r.name)).toEqual(['Explore-9']);
+    await rt.shutdown();
+  });
+});
+
+describe('SCHEDULE panel', () => {
+  const text = (lines: ReturnType<typeof scheduleLines>) => lines.map((l) => l.map((sgm) => sgm.text).join('')).join('\n');
+
+  it('shows deferred work with a countdown and takes the working-tree slot', async () => {
+    const rt = await Runtime.create({ cwd: dir, noMcp: true, model: 'ollama:test' });
+    const store = new UiStore(rt);
+    expect(store.scheduled).toEqual([]);
+
+    rt.schedule.create({ kind: 'command', in: '10m', every: '10m', command: 'pnpm test', label: 'pnpm test' });
+    rt.schedule.create({ kind: 'prompt', in: '30s', message: 'open the PR', label: 'open the PR' });
+
+    // The store follows the scheduler through the bus, not by reaching into the runtime.
+    expect(store.scheduled.map((i) => i.id)).toEqual(['s2', 's1']);
+    const shown = text(scheduleLines(store.scheduled, 44, 6));
+    expect(shown).toContain('$ s1');
+    expect(shown).toContain('@ s2');
+    expect(shown).toMatch(/in \d+s/);
+    // A repeating item is marked so a glance tells it apart from a one-off.
+    expect(shown).toContain('*');
+    expect(scheduleNote(store.scheduled)).toBe('2 pending');
+
+    rt.schedule.cancel('s1');
+    expect(store.scheduled.find((i) => i.id === 's1')!.state).toBe('cancelled');
+    expect(scheduleNote(store.scheduled)).toBe('1 pending');
+    await rt.shutdown();
+  });
+
+  it('keeps the panel from overflowing when a lot is scheduled', async () => {
+    const rt = await Runtime.create({ cwd: dir, noMcp: true, model: 'ollama:test' });
+    const store = new UiStore(rt);
+    for (let i = 0; i < 8; i++) rt.schedule.create({ kind: 'prompt', in: `${i + 1}m`, message: `item ${i}`, label: `item ${i}` });
+    const lines = text(scheduleLines(store.scheduled, 44, 3)).split('\n');
+    expect(lines).toHaveLength(4);
+    expect(lines[3]).toContain('... 5 more');
+    expect(scheduleNote(store.scheduled)).toBe('8 pending');
+    await rt.shutdown();
+  });
 });

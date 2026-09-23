@@ -205,6 +205,15 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
   const [help, setHelp] = useState<number | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
+  /** Reports from background agents that finished while nothing was running. */
+  const wakeRef = useRef<string[]>([]);
+  const runTaskRef = useRef<((fn: (signal: AbortSignal) => Promise<unknown>, prompt?: string) => Promise<void>) | null>(null);
+
+  const drainWakes = useCallback(async () => {
+    if (busyRef.current || !wakeRef.current.length) return;
+    const text = wakeRef.current.splice(0).join('\n\n');
+    await runTaskRef.current?.((signal) => rt.main.send(text, signal));
+  }, [rt]);
   const filesRef = useRef<string[] | null>(null);
   const busyRef = useRef(false);
 
@@ -221,10 +230,12 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
     const t = setInterval(() => {
       store.tick++;
       // Idle animation repaints at half rate: it should be alive, not expensive.
-      if (store.running || store.awaiting || (animateRef.current && store.tick % 2 === 0)) force((n) => n + 1);
+      // The schedule panel counts down, so the panel layout keeps repainting while work is pending.
+      const ticking = !inline && store.scheduled.some((i) => i.state === 'waiting');
+      if (store.running || store.awaiting || ticking || (animateRef.current && store.tick % 2 === 0)) force((n) => n + 1);
     }, 120);
     return () => clearInterval(t);
-  }, [store]);
+  }, [store, inline]);
 
   // Only the start screen animates. Until the first prompt there is nothing above it to scroll,
   // so repainting is free; from the first message on, the console stays perfectly still, because
@@ -259,9 +270,12 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
         abortRef.current = null;
         store.endRun();
       }
+      // A background agent may have reported while this run held the console.
+      if (wakeRef.current.length) void drainWakes();
     },
-    [store],
+    [store, drainWakes],
   );
+  runTaskRef.current = runTask;
 
   const submitPrompt = useCallback(
     async (text: string) => {
@@ -269,6 +283,18 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
     },
     [rt, runTask],
   );
+
+  // A finished background agent has to reach the orchestrator on its own; the user may never type again.
+  useEffect(() => {
+    rt.onWake = (agentId, text) => {
+      if (agentId !== 'main') return;
+      wakeRef.current.push(text);
+      void drainWakes();
+    };
+    return () => {
+      rt.onWake = undefined;
+    };
+  }, [rt, drainWakes]);
 
   const handleSubmit = useCallback(
     async (raw: string) => {
@@ -499,12 +525,14 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
   }, [mouseOn, setMouse, pushInfo]);
 
   const interrupt = useCallback(() => {
+    // Background agents outlive the turn that launched them, so esc has to reach them explicitly.
+    rt.agents.stopAll();
     if (abortRef.current) {
       abortRef.current.abort();
       store.status = { state: 'idle', detail: 'interrupting' };
       store.changed();
     }
-  }, [store]);
+  }, [rt, store]);
   store.interrupt = interrupt;
 
   const suggestions = useMemo<Suggestion[]>(() => {
@@ -993,19 +1021,33 @@ export async function startTui(opts: TuiOptions, io?: TuiIo): Promise<void> {
   const clearRef: { current: (() => void) | null } = { current: null };
   const setDialog = (d: DialogState | null) => dialogRef.current?.(d);
 
+  // There is one dialog area, and a background agent can need an answer while the user is already
+  // answering something else, so requests queue instead of overwriting each other on screen.
+  let gate: Promise<unknown> = Promise.resolve();
+  const serialize = <T,>(fn: () => Promise<T>): Promise<T> => {
+    const next = gate.then(fn, fn);
+    gate = next.catch(() => {});
+    return next;
+  };
+
   const ask = <T,>(make: (resolve: (value: string, text?: string) => void) => DialogState, map: (value: string, text?: string) => T, signal?: AbortSignal): Promise<T> =>
-    new Promise<T>((resolve, reject) => {
-      const state = make((value, text) => resolve(map(value, text)));
-      setDialog(state);
-      signal?.addEventListener(
-        'abort',
-        () => {
-          setDialog(null);
-          reject(new InterruptedError());
-        },
-        { once: true },
-      );
-    });
+    serialize(
+      () =>
+        new Promise<T>((resolve, reject) => {
+          // The turn may have been interrupted while this request waited its turn in the queue.
+          if (signal?.aborted) return reject(new InterruptedError());
+          const state = make((value, text) => resolve(map(value, text)));
+          setDialog(state);
+          signal?.addEventListener(
+            'abort',
+            () => {
+              setDialog(null);
+              reject(new InterruptedError());
+            },
+            { once: true },
+          );
+        }),
+    );
 
   const ui: UIBridge = {
     async askPermission(req: PermissionRequest, signal): Promise<PermissionAnswer> {

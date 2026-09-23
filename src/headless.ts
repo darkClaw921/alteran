@@ -28,8 +28,17 @@ export async function runHeadless(opts: HeadlessOptions): Promise<number> {
     await Promise.race([rt.connectMcp(), new Promise((r) => setTimeout(r, 15_000))]);
   }
   const controller = new AbortController();
-  const onSig = () => controller.abort();
+  const onSig = () => {
+    rt.agents.stopAll();
+    controller.abort();
+  };
   process.on('SIGINT', onSig);
+
+  /** Background agents that finished while nothing was running; folded back in before exit. */
+  const wakes: string[] = [];
+  rt.onWake = (agentId, text) => {
+    if (agentId === 'main') wakes.push(text);
+  };
 
   let lastWasDelta = false;
   rt.bus.on((ev) => {
@@ -96,7 +105,15 @@ export async function runHeadless(opts: HeadlessOptions): Promise<number> {
       else if (res.kind === 'prompt') prompt = res.text;
       if (res.kind !== 'prompt') return code;
     }
-    const final = await rt.main.send(prompt, controller.signal);
+    let final = await rt.main.send(prompt, controller.signal);
+    // A background agent launched during the run still owes a report; exiting now would drop it.
+    while (!controller.signal.aborted && (wakes.length || rt.agents.running.length)) {
+      if (!wakes.length) {
+        await Promise.race(rt.agents.running.map((r) => r.turn));
+        continue;
+      }
+      final = await rt.main.send(wakes.splice(0).join('\n\n'), controller.signal);
+    }
     if (opts.json) process.stdout.write(JSON.stringify({ type: 'result', text: final, usage: rt.main.usage, session: rt.session.id }) + '\n');
   } catch (e) {
     if (e instanceof InterruptedError) {

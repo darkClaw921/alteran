@@ -1,6 +1,6 @@
 import type { Entry } from './store.js';
 import { fmtClock, markdown, plain, seg, truncate, withRight, wrapLine, type Line } from './lines.js';
-import { contextBar, type ContextReport } from '../core/context.js';
+import { cacheLine, contextBar, type ContextReport } from '../core/context.js';
 import { centerGate, gateSize, renderGate } from './gate.js';
 import { C, CONTEXT_COLORS } from './theme.js';
 
@@ -91,6 +91,10 @@ function contextReport(report: ContextReport, width: number): Line[] {
       C.dim,
     ),
   ]);
+  // A caching regression is silent everywhere else: requests still succeed, they just cost more.
+  const cached = report.cache.read;
+  const total = cached + report.cache.written + report.cache.fresh;
+  out.push(...wrapLine([seg(cacheLine(report), total && !cached ? C.amber : C.dim)], width));
   return out;
 }
 
@@ -222,9 +226,14 @@ function computeLines(e: Entry, width: number, expanded: boolean, tick = 0): Lin
     case 'tool':
       return [[], ...toolLines(e, width, expanded)];
     case 'agent': {
-      const color = e.status === 'failed' ? C.red : e.status === 'done' ? C.green : C.cyan;
-      const mark = e.status === 'running' ? '>>' : e.status === 'done' ? '<<' : '!!';
-      const head = withRight([seg(`${mark} `, color), seg(e.label, C.text, { bold: true })], time(e.t), width);
+      const color = e.status === 'failed' ? C.red : e.status === 'done' ? C.green : e.status === 'stopped' ? C.muted : C.cyan;
+      const mark = e.status === 'running' ? '>>' : e.status === 'done' ? '<<' : e.status === 'stopped' ? 'xx' : '!!';
+      const tail = e.status === 'running' ? `${e.background ? 'background, ' : ''}${e.detail ?? 'thinking'}` : '';
+      const head = withRight(
+        [seg(`${mark} `, color), seg(e.label, C.text, { bold: true }), ...(e.name ? [seg(`  [${e.name}]`, C.dim)] : []), ...(tail ? [seg(`  ${tail}`, C.muted)] : [])],
+        time(e.t),
+        width,
+      );
       const out: Line[] = [[], head];
       if (e.status !== 'running' && e.summary) {
         const lines = e.summary.split('\n').filter((l) => l.trim()).slice(0, expanded ? 40 : 3);

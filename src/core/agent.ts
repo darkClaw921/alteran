@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import type { AgentDef } from '../compat/types.js';
 import type { PermissionMode } from '../config/settings.js';
 import type { ModelRef } from '../providers/registry.js';
@@ -14,6 +15,7 @@ import {
   type ToolUseBlock,
   type Usage,
 } from '../types.js';
+import { notification } from './agents.js';
 import type { TodoItem } from './events.js';
 import type { Runtime } from './runtime.js';
 import { isReadOnly, type Tool, type ToolOutput } from '../tools/types.js';
@@ -40,7 +42,52 @@ export interface AgentOptions {
 }
 
 const MAX_TURNS = 400;
+
+/** Retries per model call, on top of the first attempt. */
+const MODEL_RETRIES = 3;
+
+/**
+ * Errors worth another attempt: anything that never reached the model (connection reset, timeout),
+ * anything the gateway throttled or fumbled (429, 5xx), and the 400 a gateway answers with when the
+ * model emitted a tool call it could not parse. That last one is a dice roll in the model's output,
+ * not a defect in the request, and re-rolling it is exactly what a person would do by hand.
+ */
+const TRANSIENT = /timed?\s*out|timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|socket hang up|fetch failed|network|stream ended without|overload|unavailable|rate.?limit/i;
+/** Gateways report a mangled tool call with a 400; some of them only in their own language. */
+const BAD_TOOL_CALL = /tool[_ ]?call|tool[_ ]?use|invalid json|malformed|вызов инструмента|некорректн/i;
+
+function transient(e: unknown): boolean {
+  const err = e as { status?: number; message?: string };
+  const status = typeof err?.status === 'number' ? err.status : undefined;
+  const msg = err?.message ?? String(e);
+  if (status === undefined) return TRANSIENT.test(msg);
+  if (status === 408 || status === 409 || status === 429 || status >= 500) return true;
+  if (status === 400) return BAD_TOOL_CALL.test(msg);
+  return false;
+}
+
+/** Exponential with jitter, so several agents retrying at once do not march in step. */
+function backoffMs(attempt: number, e: unknown): number {
+  const after = Number((e as { headers?: Record<string, string> })?.headers?.['retry-after']);
+  if (Number.isFinite(after) && after > 0) return Math.min(after * 1000, 30_000);
+  return Math.round(Math.min(1000 * 2 ** attempt, 15_000) * (0.75 + Math.random() * 0.5));
+}
+
+function wait(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new InterruptedError());
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
 let agentSeq = 0;
+let directSeq = 0;
 
 export class InterruptedError extends Error {
   constructor() {
@@ -63,6 +110,8 @@ export class Agent implements AgentHandle {
   contextTokens = 0;
   /** Extra context delivered with the next user message (hook output, mode changes, phase reports). */
   pendingContext: string[] = [];
+  /** True while a turn is in flight, so the runtime knows whether it must wake this agent. */
+  busy = false;
   private modeOverride?: PermissionMode;
   onMessage?: (m: Message) => void;
 
@@ -99,6 +148,8 @@ export class Agent implements AgentHandle {
   /** Run one user turn to completion (model ↔ tools loop). Returns the final assistant text. */
   async send(input: string | ContentBlock[], signal: AbortSignal): Promise<string> {
     const rt = this.runtime;
+    // A turn boundary is the one safe moment to let newly connected servers into the tool roster.
+    rt.syncTools();
     const text = typeof input === 'string' ? input : textOf(input);
     const extra = [...this.pendingContext];
     this.pendingContext = [];
@@ -118,6 +169,18 @@ export class Agent implements AgentHandle {
   }
 
   private async loop(signal: AbortSignal): Promise<string> {
+    this.busy = true;
+    try {
+      return await this.turns(signal);
+    } finally {
+      this.busy = false;
+      // A background child can finish between the last drain and this line, when `busy` still says
+      // "mid-turn" and nothing will look again. Ask once more now that the turn is truly over.
+      this.runtime.wake(this.id);
+    }
+  }
+
+  private async turns(signal: AbortSignal): Promise<string> {
     const rt = this.runtime;
     let finalText = '';
     let compactedForOverflow = false;
@@ -130,7 +193,7 @@ export class Agent implements AgentHandle {
       rt.bus.emit({ type: 'status', agentId: this.id, state: 'thinking' });
       let result: { message: Message; stopReason: StopReason; usage: Usage };
       try {
-        result = await this.callModel(tools, signal);
+        result = await this.callWithRetry(tools, signal);
       } catch (e) {
         if (signal.aborted) throw new InterruptedError();
         const msg = (e as Error).message ?? String(e);
@@ -173,6 +236,13 @@ export class Agent implements AgentHandle {
           this.push({ role: 'user', content: this.reminder([`Stop hook feedback:\n${stop.reason}`]) });
           continue;
         }
+        // A background agent that finished while this turn ran must be reported before the turn ends,
+        // or its work would sit unread until the user happened to type again.
+        const late = this.drain();
+        if (late.length) {
+          this.push({ role: 'user', content: this.reminder(late) });
+          continue;
+        }
         rt.bus.emit({ type: 'status', agentId: this.id, state: 'idle' });
         return finalText;
       }
@@ -183,6 +253,12 @@ export class Agent implements AgentHandle {
         reminders.push(this.modeNotice);
         this.modeNotice = undefined;
       }
+      // Messages sent to this agent mid-run, and reports from its own background children.
+      if (this.pendingContext.length) {
+        reminders.push(...this.pendingContext);
+        this.pendingContext = [];
+      }
+      reminders.push(...this.drain());
       this.push({ role: 'user', content: [...results, ...this.reminder(reminders)] });
       if (signal.aborted) throw new InterruptedError();
     }
@@ -190,6 +266,56 @@ export class Agent implements AgentHandle {
   }
 
   modeNotice?: string;
+
+  /** Notifications for background children that finished since the last check. */
+  private drain(): string[] {
+    const done = this.runtime.agents.drain(this.id);
+    return done.length ? [notification(done)] : [];
+  }
+
+  /**
+   * Identity of the cacheable prefix (tools + system). Providers that route by key — OpenAI's
+   * `prompt_cache_key` — use it to keep requests with the same prefix on the same cache, and it is
+   * stable across sessions, so a resumed conversation lands where the first one left off.
+   */
+  private prefixKey(tools: Tool<any>[]): string {
+    const names = tools.map((t) => t.name).join(',');
+    if (this.keyFor !== names || this.keySystem !== this.system) {
+      this.keyFor = names;
+      this.keySystem = this.system;
+      this.key = 'alteran-' + crypto.createHash('sha1').update(`${this.system}\n${names}`).digest('hex').slice(0, 16);
+    }
+    return this.key;
+  }
+  private key = '';
+  private keyFor = '';
+  private keySystem = '';
+
+  /**
+   * A model call that survives the gateway having a bad minute. Until this existed, one timeout or
+   * one mangled tool call ended the whole turn and the user had to retype the task; everything the
+   * model had already done that turn stayed, but the thread stopped dead.
+   */
+  private async callWithRetry(tools: Tool<any>[], signal: AbortSignal) {
+    const rt = this.runtime;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.callModel(tools, signal);
+      } catch (e) {
+        if (signal.aborted) throw new InterruptedError();
+        if (attempt >= MODEL_RETRIES || !transient(e)) throw e;
+        const delay = backoffMs(attempt, e);
+        const msg = (e as Error).message ?? String(e);
+        rt.bus.emit({
+          type: 'notice',
+          level: 'warn',
+          text: `${this.label}: ${msg} — retrying in ${Math.max(1, Math.round(delay / 1000))}s (attempt ${attempt + 2} of ${MODEL_RETRIES + 1}).`,
+        });
+        rt.bus.emit({ type: 'status', agentId: this.id, state: 'thinking', detail: `retry ${attempt + 1}/${MODEL_RETRIES}` });
+        await wait(delay, signal);
+      }
+    }
+  }
 
   private async callModel(tools: Tool<any>[], signal: AbortSignal) {
     const rt = this.runtime;
@@ -204,6 +330,8 @@ export class Agent implements AgentHandle {
       maxTokens: Math.min(rt.settings.maxOutputTokens ?? 64_000, info.maxOutput),
       signal,
       reasoning: rt.reasoning,
+      cacheTtl: rt.cacheTtl,
+      cacheKey: this.prefixKey(tools),
     });
     for await (const ev of stream) {
       if (ev.type === 'text_delta') rt.bus.emit({ type: 'text_delta', agentId: this.id, text: ev.text });
@@ -242,6 +370,16 @@ export class Agent implements AgentHandle {
       }
     }
     return results;
+  }
+
+  /**
+   * Run a tool outside the model loop (scheduled work), through the same hooks, permission checks
+   * and console events, so deferred work is never a way around the rules.
+   */
+  async runDirect(name: string, input: Record<string, unknown>, signal: AbortSignal): Promise<ToolOutput> {
+    const use: ToolUseBlock = { type: 'tool_use', id: `direct-${++directSeq}`, name, input };
+    const result = await this.runTool(use, signal);
+    return { content: result.content, isError: result.isError };
   }
 
   private async runTool(use: ToolUseBlock, signal: AbortSignal): Promise<ToolResultBlock> {
@@ -330,7 +468,20 @@ export class Agent implements AgentHandle {
     else history.push({ role: 'user', content: [{ type: 'text', text: prompt }] });
     const provider = rt.registry.get(this.model.provider);
     let summary = '';
-    for await (const ev of provider.stream({ model: this.model.model, system: this.system, messages: history, tools: [], maxTokens: 16_000, signal, reasoning: 'off' })) {
+    // Summarizing is a fork of this same conversation: it must send the very same tools, system and
+    // effort, or the whole history is re-read at full price instead of from the cache.
+    for await (const ev of provider.stream({
+      model: this.model.model,
+      route: rt.registry.route(this.model),
+      system: this.system,
+      messages: history,
+      tools: rt.toolsFor(this).map(toolSpec),
+      maxTokens: 16_000,
+      signal,
+      reasoning: rt.reasoning,
+      cacheTtl: rt.cacheTtl,
+      cacheKey: this.prefixKey(rt.toolsFor(this)),
+    })) {
       if (ev.type === 'done') summary = textOf(ev.message.content);
     }
     if (!summary.trim()) return;

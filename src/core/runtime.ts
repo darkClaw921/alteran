@@ -14,12 +14,14 @@ import { TrackerStore } from '../tracker/store.js';
 import type { BackgroundShell } from '../tools/bash.js';
 import { killAllShells } from '../tools/bash.js';
 import type { AskQuestions } from '../tools/misc-tools.js';
-import { BUILTIN_TOOLS, MAIN_ONLY_TOOLS, TOOL_ALIASES } from '../tools/registry.js';
+import { BUILTIN_TOOLS, MAIN_ONLY_TOOLS, ORCHESTRATION_TOOLS, TOOL_ALIASES } from '../tools/registry.js';
 import type { Tool } from '../tools/types.js';
 import { textOf } from '../types.js';
 import { Agent, type AgentHandle } from './agent.js';
+import { AgentRuns, notification, type AgentResult, type SpawnRequest } from './agents.js';
 import { EventBus } from './events.js';
-import { gitSnapshot, mainSystemPrompt, subagentSystemPrompt, type EnvInfo, type PromptCapabilities } from './prompt.js';
+import { gitSnapshot, mainSystemPrompt, type EnvInfo, type PromptCapabilities } from './prompt.js';
+import { Scheduler } from './schedule.js';
 import { SessionStore } from './session.js';
 
 export type PlanDecision =
@@ -45,23 +47,7 @@ export interface RuntimeOptions {
   noMcp?: boolean;
 }
 
-export interface SubagentRequest {
-  agentType: string;
-  description: string;
-  prompt: string;
-  parent: AgentHandle;
-  signal: AbortSignal;
-}
-
-const MODE_ALIASES: Record<string, PermissionMode> = {
-  bypassPermissions: 'autonomous',
-  autonomous: 'autonomous',
-  acceptEdits: 'acceptEdits',
-  plan: 'plan',
-  default: 'default',
-  dontAsk: 'autonomous',
-  auto: 'acceptEdits',
-};
+export type SubagentRequest = SpawnRequest;
 
 export class Runtime {
   cwd: string;
@@ -88,9 +74,19 @@ export class Runtime {
   readonly shells = new Map<string, BackgroundShell>();
   readonly startedAt = Date.now();
   lastPlan?: { text: string; file: string };
+  private gitAtStart?: string;
+  private gitSnapshotFor?: string;
   modeBeforePlan?: PermissionMode;
   main!: Agent;
+  readonly agents: AgentRuns;
+  readonly schedule: Scheduler;
+  private mcpRoster: Tool<any>[] = [];
   onCompacted?: (agent: Agent) => void;
+  /**
+   * Called when a background agent finishes while its parent sits idle. The front end starts a
+   * turn carrying the notification; without it the report would wait for the user to type.
+   */
+  onWake?: (agentId: string, text: string) => void;
   private trackerUnsub?: () => void;
 
   private constructor(opts: RuntimeOptions) {
@@ -126,6 +122,8 @@ export class Runtime {
     const store = TrackerStore.discover(this.cwd);
     if (store) this.attachTracker(store);
 
+    this.agents = new AgentRuns(this);
+    this.schedule = new Scheduler(this);
     this.main = new Agent({ runtime: this, label: 'alteran', model: this.model, system: this.buildMainSystem() });
     this.main.onMessage = (m) => this.session.append(m);
     if (resumeFile) {
@@ -148,7 +146,7 @@ export class Runtime {
     return rt;
   }
 
-  /** Start MCP connections in the background; tools appear as servers come up. */
+  /** Start MCP connections in the background; tools join the roster at the next turn boundary. */
   connectMcp(): Promise<void> {
     return this.mcp.connectAll();
   }
@@ -159,6 +157,48 @@ export class Runtime {
 
   get mode(): PermissionMode {
     return this.permissions.mode;
+  }
+
+  /** How deep delegation may go: 1 = only the orchestrator delegates, 2 = its agents may too. */
+  get maxAgentDepth(): number {
+    return this.settings.agents?.maxDepth ?? 2;
+  }
+
+  get maxConcurrentAgents(): number {
+    return this.settings.agents?.maxConcurrent ?? 8;
+  }
+
+  /**
+   * A terminal session is bursty: the user reads an answer for ten minutes, then types again. The
+   * five-minute cache would be cold by then and the whole prefix re-read at full price, so the
+   * longer entry pays for its doubled write after about three requests.
+   */
+  get cacheTtl(): '5m' | '1h' {
+    return this.settings.cache?.ttl ?? '1h';
+  }
+
+  /**
+   * Hand a finished background report to its parent. A parent mid-turn picks it up itself through
+   * `AgentRuns.drain`; an idle one needs the front end to start a turn for it.
+   */
+  wake(agentId: string, extra?: string): void {
+    const run = agentId === 'main' ? undefined : this.agents.find(agentId);
+    const target = agentId === 'main' ? this.main : run?.agent;
+    // An agent that no longer exists cannot be told anything; its work belongs to the orchestrator.
+    if (!target) return this.wake('main', extra);
+    // Mid-turn the agent collects its own reports; only the extra has to be handed over.
+    if (target.busy) {
+      if (extra) target.pendingContext.push(extra);
+      return;
+    }
+    const done = this.agents.drain(agentId);
+    const texts = [...(extra ? [extra] : []), ...(done.length ? [notification(done)] : [])];
+    if (!texts.length) return;
+    const text = texts.join('\n\n');
+    // An idle subagent is woken here: only the orchestrator's turn belongs to the front end.
+    if (run) this.agents.resume(run, text);
+    else if (this.onWake) this.onWake(agentId, text);
+    else target.pendingContext.push(text);
   }
 
   setMode(mode: PermissionMode) {
@@ -213,9 +253,17 @@ export class Runtime {
     this.trackerUnsub = store.onChange(() => this.bus.emit({ type: 'tracker_changed' }));
   }
 
+  /**
+   * The git snapshot is taken once per working directory: it sits in every agent's system prompt,
+   * so re-reading it per spawn would give two agents of the same type different prefixes and cost
+   * them each other's cache.
+   */
   envInfo(model: ModelRef): EnvInfo {
-    const git = gitSnapshot(this.cwd);
-    return { cwd: this.cwd, root: this.root, model: model.id, isGit: git !== undefined, gitStatus: git };
+    if (this.gitSnapshotFor !== this.cwd) {
+      this.gitSnapshotFor = this.cwd;
+      this.gitAtStart = gitSnapshot(this.cwd);
+    }
+    return { cwd: this.cwd, root: this.root, model: model.id, isGit: this.gitAtStart !== undefined, gitStatus: this.gitAtStart };
   }
 
   buildMainSystem(): string {
@@ -230,10 +278,29 @@ export class Runtime {
 
   // ------------------------------------------------------------------ tools
 
+  /**
+   * Tools render ahead of everything else in the prompt, so a server that finishes connecting
+   * mid-conversation would rewrite the prefix and throw away the whole cache. The roster is frozen
+   * between turns and only changes while nothing is in flight; late servers join at the next turn.
+   * The order is by name so a resumed session rebuilds the same prefix.
+   */
+  syncTools(): boolean {
+    if (this.main && this.anyBusy()) return false;
+    const found = [...this.mcp.tools()].sort((a, b) => a.name.localeCompare(b.name));
+    const defer = found.length > 30;
+    const next = found.map((t) => (t.deferred === defer ? t : { ...t, deferred: defer }));
+    const same = next.length === this.mcpRoster.length && next.every((t, i) => t.name === this.mcpRoster[i].name && t.deferred === this.mcpRoster[i].deferred);
+    if (same) return false;
+    this.mcpRoster = next;
+    return true;
+  }
+
+  private anyBusy(): boolean {
+    return this.main.busy || this.agents.list().some((r) => r.agent.busy);
+  }
+
   allTools(): Tool<any>[] {
-    const mcpTools = this.mcp.tools();
-    const defer = mcpTools.length > 30;
-    return [...BUILTIN_TOOLS, ...mcpTools.map((t) => (defer ? { ...t, deferred: true } : t))];
+    return [...BUILTIN_TOOLS, ...this.mcpRoster];
   }
 
   private allowedByDef(def: AgentDef | undefined, name: string): boolean {
@@ -255,6 +322,8 @@ export class Runtime {
     const hasDeferred = this.allTools().some((t) => t.deferred);
     return this.allTools().filter((t) => {
       if (isSub && MAIN_ONLY_TOOLS.has(t.name)) return false;
+      // Delegation is budgeted by depth, not forbidden outright: an agent at the limit works alone.
+      if (ORCHESTRATION_TOOLS.has(t.name) && agent.depth >= this.maxAgentDepth) return false;
       if (t.deferred && !agent.surfaced.has(t.name)) return false;
       if (t.name === 'ToolSearch' && !hasDeferred) return false;
       if ((t.name === 'ListMcpResources' || t.name === 'ReadMcpResource') && !hasResources) return false;
@@ -280,29 +349,12 @@ export class Runtime {
     return this.ext.agents.get(type) ?? [...this.ext.agents.values()].find((a) => a.name.endsWith(`:${type}`) || a.name.toLowerCase() === type.toLowerCase());
   }
 
-  async runSubagent(req: SubagentRequest): Promise<string> {
-    const def = this.resolveAgentDef(req.agentType);
-    if (!def) throw new Error(`Unknown agent type "${req.agentType}". Available: ${[...this.ext.agents.keys()].join(', ')}`);
-    const model = this.registry.resolveAgentModel(def.model, this.model);
-    const mode = def.permissionMode ? MODE_ALIASES[def.permissionMode] : undefined;
-    const agent = new Agent({
-      runtime: this,
-      label: def.name,
-      def,
-      parent: req.parent,
-      model,
-      system: subagentSystemPrompt(def, this.ext, this.envInfo(model), { skill: !def.tools || def.tools.includes('Skill') }),
-      mode,
-    });
-    this.bus.emit({ type: 'agent_start', agentId: agent.id, label: `${def.name}: ${req.description}`, parentId: req.parent.id, prompt: req.prompt });
-    try {
-      const report = await agent.send(req.prompt, req.signal);
-      this.bus.emit({ type: 'agent_end', agentId: agent.id, label: def.name, ok: true, summary: report.slice(0, 500) });
-      return report;
-    } catch (e) {
-      this.bus.emit({ type: 'agent_end', agentId: agent.id, label: def.name, ok: false, summary: (e as Error).message });
-      throw e;
-    }
+  /** Launch an agent and wait for its report. Background launches go through `agents.spawn`. */
+  async runSubagent(req: SubagentRequest): Promise<AgentResult> {
+    const run = this.agents.spawn({ ...req, background: false });
+    const result = await run.turn;
+    if (result.state === 'failed' || result.state === 'stopped') throw new Error(result.report || `Agent ${run.name} ${result.state}`);
+    return result;
   }
 
   /** One-off completion without tools (WebFetch extraction, titles). */
@@ -333,6 +385,8 @@ export class Runtime {
   }
 
   async shutdown() {
+    this.schedule.cancelAll();
+    this.agents.stopAll();
     await this.hooks.run('SessionEnd', { reason: 'exit' }).catch(() => {});
     killAllShells(this);
     await this.mcp.closeAll();

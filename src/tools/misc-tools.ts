@@ -149,7 +149,7 @@ who can approve it (optionally decomposing it into phased tracker tasks) or send
     }
     rt.setMode(decision.mode ?? rt.modeBeforePlan ?? 'default');
     if (decision.kind === 'tasks') {
-      const report = await rt.runSubagent({
+      const { report } = await rt.runSubagent({
         agentType: 'create-tasks',
         description: 'Decompose plan into tracker tasks',
         prompt: `The user approved this implementation plan (saved at ${file}). Decompose it into phases (epics) and tasks in the tracker.\n\n${input.plan}`,

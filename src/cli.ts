@@ -114,13 +114,18 @@ program
   .description('List saved sessions for this project')
   .action(async () => {
     const { SessionStore } = await import('./core/session.js');
-    const list = SessionStore.list(projectRoot(process.cwd()));
+    const root = projectRoot(process.cwd());
+    const list = SessionStore.list(root);
     if (!list.length) return console.log(paint.muted('No saved sessions for this project.'));
     console.log(section('SESSIONS', 80));
     for (const [i, s] of list.entries()) {
       console.log(
         `${i === 0 ? mark.on() : paint.dim('[ ]')} ${paint.cyan(s.id.slice(0, 8))}  ${paint.muted(s.updatedAt.toISOString().slice(0, 16).replace('T', ' '))}  ${paint.dim(String(s.messages).padStart(4) + ' msgs')}  ${s.title}`,
       );
+      // Agents the session delegated to keep their own transcripts next to it.
+      for (const a of SessionStore.agents(root, s.id)) {
+        console.log(`    ${paint.dim('|')} ${paint.bronze(a.id)}  ${paint.dim(String(a.messages).padStart(4) + ' msgs')}  ${paint.muted(a.title)}`);
+      }
     }
     console.log(
       paint.dim(`\nContinue the latest: `) + paint.bold('alteran --continue') + paint.dim('   pick one: ') + paint.bold('alteran --resume') + paint.dim('   by id: ') + paint.bold(`alteran --resume ${list[0].id.slice(0, 8)}`),

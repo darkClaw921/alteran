@@ -94,13 +94,17 @@ export class AnthropicProvider implements Provider {
       input_schema: t.inputSchema as Anthropic.Tool.InputSchema,
       eager_input_streaming: true,
     }));
+    // Tools render before system, so the marker on the system block caches tools and system
+    // together; the top-level field then follows the growing conversation on its own. Both carry
+    // the same TTL — a longer entry may precede a shorter one, never the other way round.
+    const cache = { type: 'ephemeral', ...(req.cacheTtl === '1h' ? { ttl: '1h' as const } : {}) } as const;
     const params: Anthropic.MessageCreateParamsStreaming = {
       model: req.model,
       max_tokens: req.maxTokens,
-      system: [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }],
+      system: [{ type: 'text', text: req.system, cache_control: cache }],
       messages: toMessages(req.messages),
       tools: tools.length ? tools : undefined,
-      cache_control: { type: 'ephemeral' },
+      cache_control: cache,
       stream: true,
     };
     if (adaptive) {

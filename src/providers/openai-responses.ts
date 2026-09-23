@@ -72,6 +72,9 @@ export class OpenAIResponsesProvider implements Provider {
       store: false,
       stream: true,
     };
+    // OpenAI caches prefixes automatically; the key only steers requests that share one onto the
+    // same cache shard, which matters once several agents run against the same account.
+    if (req.cacheKey) params.prompt_cache_key = req.cacheKey;
     if (reasoningModel) {
       params.reasoning = {
         effort: req.reasoning === 'off' ? 'minimal' : (req.reasoning ?? 'medium'),

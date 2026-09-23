@@ -120,6 +120,10 @@ export interface ProviderRequest {
   temperature?: number;
   /** Upstream providers to route to, best first (polza/OpenRouter gateways). */
   route?: string[];
+  /** How long cached prefixes should live; `1h` suits bursty interactive sessions. */
+  cacheTtl?: '5m' | '1h';
+  /** Stable id of this prompt prefix, so providers that route by key keep hitting the same cache. */
+  cacheKey?: string;
 }
 
 export interface Provider {

@@ -22,6 +22,17 @@ store.push({kind:'tool', id:'2', agentId:'main', name:'Grep', summary:'pattern: 
 store.push({kind:'tool', id:'3', agentId:'main', name:'TodoWrite', summary:'', input:{todos:[{content:'read gate + router modules',status:'completed'},{content:'add iris.authorize() guard',status:'completed'},{content:'write dial.test.ts for denied tokens',status:'in_progress'},{content:'typecheck + unit tests',status:'pending'}]}, t:4000, status:'ok', display:{summary:''}});
 store.push({kind:'tool', id:'4', agentId:'main', name:'Edit', summary:'src/gate/dial.ts', input:{file_path:'src/gate/dial.ts'}, t:7000, status:'ok', display:{summary:'Updated src/gate/dial.ts with 42 additions and 8 removals', diff:[{kind:'del',lineNo:118,text:'const session = await gate.open(address)'},{kind:'add',lineNo:118,text:'const token = await iris.authorize(address, ctx.actor)'},{kind:'add',lineNo:119,text:'if (!token.ok) throw new IrisDenied(token.reason)'},{kind:'add',lineNo:120,text:'const session = await gate.open(address, token)'}]}});
 store.push({kind:'tool', id:'5', agentId:'main', name:'Bash', summary:'pnpm vitest run src/gate', input:{command:'pnpm vitest run src/gate'}, t:15000, status:'ok', display:{summary:'Test Files 2 passed (2) Tests 42 passed (42)', lines:['PASS src/gate/dial.test.ts 18 tests 1.9s','PASS src/gate/iris.test.ts 24 tests 2.4s','Test Files 2 passed (2)']}});
+for (const ev of [
+  { type:'agent_start', agentId:'agent-1', name:'Explore-1', label:'Explore: map the router modules', parentId:'main', depth:1, model:'polza:deepseek/deepseek-v4.1-flash', background:true },
+  { type:'agent_start', agentId:'agent-2', name:'general-purpose-2', label:'general-purpose: port the SG-1 compat tests', parentId:'agent-1', depth:2, model:'polza:deepseek/deepseek-v4.1-flash' },
+  { type:'status', agentId:'agent-2', state:'tool', detail:'Grep' },
+  { type:'agent_end', agentId:'agent-1', name:'Explore-1', label:'Explore', ok:true, summary:'6 call sites in 4 files' },
+] as const) rt.bus.emit(ev as never);
+rt.bus.emit({ type:'schedule', items: [
+  { id:'s1', kind:'command', label:'pnpm vitest run src/gate', command:'pnpm vitest run src/gate', dueAt: Date.now() + 145000, everyMs: 300000, runs: 2, state:'waiting', owner:'main', ownerName:'alteran' },
+  { id:'s2', kind:'prompt', label:'re-check the build', dueAt: Date.now() + 40000, runs: 0, state:'waiting', owner:'agent-2', ownerName:'general-purpose-2' },
+  { id:'s3', kind:'prompt', label:'open the PR once lint is clean', dueAt: Date.now() - 5000, runs: 1, state:'done', owner:'main', ownerName:'alteran' },
+] });
 store.consilium = { title:'phase 2', note:'plan 4/6', source:'tracker', current:'alt-3f2.5: fix lint warnings', items:[
  {id:'1',mark:'[x]',color:C.green,title:'read gate + router modules'},{id:'2',mark:'[x]',color:C.green,title:'add iris.authorize() guard'},{id:'3',mark:'[x]',color:C.green,title:'write dial.test.ts (18)'},{id:'4',mark:'[x]',color:C.green,title:'typecheck + unit tests'},{id:'5',mark:'[/]',color:C.amber,title:'fix 2 lint warnings'},{id:'6',mark:'[ ]',color:C.muted,title:'commit + open PR #412'}]};
 const H = 44, W = 200;

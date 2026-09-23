@@ -1,5 +1,6 @@
 import type { AgentEvent, TodoItem } from '../core/events.js';
 import type { Runtime } from '../core/runtime.js';
+import type { ScheduleView } from '../core/schedule.js';
 import { contextBreakdown, type ContextReport } from '../core/context.js';
 import type { KeyStatus } from '../providers/catalog.js';
 import { isClosedStatus } from '../tracker/model.js';
@@ -29,7 +30,18 @@ export type Entry =
       resultText?: string;
       durationMs?: number;
     }
-  | { kind: 'agent'; id: string; label: string; t: number; status: 'running' | 'done' | 'failed'; summary?: string }
+  | {
+      kind: 'agent';
+      id: string;
+      label: string;
+      /** Address the orchestrator uses for SendMessage; shown so the user can follow along. */
+      name?: string;
+      background?: boolean;
+      t: number;
+      status: AgentState;
+      detail?: string;
+      summary?: string;
+    }
   | { kind: 'notice'; level: 'info' | 'warn' | 'error'; text: string; t: number }
   | { kind: 'info'; text: string; title?: string }
   | { kind: 'error'; text: string }
@@ -39,6 +51,25 @@ export type Entry =
   | { kind: 'splash'; rows: Array<[string, string]>; hints: string[] }
   /** Colour-coded breakdown of the context window (/context). */
   | { kind: 'context'; report: ContextReport };
+
+export type AgentState = 'running' | 'done' | 'failed' | 'stopped';
+
+/** One delegated agent, as the AGENTS panel shows it. */
+export interface AgentRow {
+  id: string;
+  name: string;
+  type: string;
+  task: string;
+  parentId: string;
+  depth: number;
+  model: string;
+  background: boolean;
+  state: AgentState;
+  detail: string;
+  tokens: number;
+  startedAt: number;
+  endedAt?: number;
+}
 
 export interface EventLogItem {
   text: string;
@@ -91,6 +122,9 @@ export class UiStore {
   awaiting = false;
   tick = 0;
   agents = new Map<string, string>();
+  readonly agentRows = new Map<string, AgentRow>();
+  /** Deferred work, newest snapshot from the scheduler. */
+  scheduled: ScheduleView[] = [];
   private listeners = new Set<() => void>();
   private pending = false;
   /** How many leading entries are final and may be printed permanently (inline layout). */
@@ -330,6 +364,27 @@ export class UiStore {
     this.changed();
   }
 
+  /** Delegated agents in tree order: every agent follows the one that launched it. */
+  agentTree(): AgentRow[] {
+    const byParent = new Map<string, AgentRow[]>();
+    for (const r of this.agentRows.values()) {
+      const list = byParent.get(r.parentId) ?? [];
+      list.push(r);
+      byParent.set(r.parentId, list);
+    }
+    for (const list of byParent.values()) list.sort((a, b) => a.startedAt - b.startedAt);
+    const out: AgentRow[] = [];
+    const walk = (parentId: string) => {
+      for (const r of byParent.get(parentId) ?? []) {
+        out.push(r);
+        walk(r.id);
+      }
+    };
+    walk('main');
+    for (const r of this.agentRows.values()) if (!out.includes(r)) out.push(r);
+    return out;
+  }
+
   private onEvent(ev: AgentEvent) {
     if (this.stages.onEvent(ev)) this.changed();
     switch (ev.type) {
@@ -416,19 +471,60 @@ export class UiStore {
         this.changed();
         break;
       }
-      case 'agent_start':
-        this.agents.set(ev.agentId, ev.label.split(':')[0]);
-        this.push({ kind: 'agent', id: ev.agentId, label: ev.label, t: this.rel(), status: 'running' });
-        this.log(`agent ${ev.label.split(':')[0]} started`, C.cyan);
+      case 'agent_start': {
+        const type = ev.label.split(':')[0];
+        this.agents.set(ev.agentId, ev.name ?? type);
+        const row = this.agentRows.get(ev.agentId);
+        if (row) {
+          row.state = 'running';
+          row.detail = '';
+          row.endedAt = undefined;
+        } else {
+          this.agentRows.set(ev.agentId, {
+            id: ev.agentId,
+            name: ev.name ?? ev.agentId,
+            type,
+            task: ev.label.slice(type.length + 2) || type,
+            parentId: ev.parentId ?? 'main',
+            depth: ev.depth ?? 1,
+            model: ev.model ?? '',
+            background: Boolean(ev.background),
+            state: 'running',
+            detail: '',
+            tokens: 0,
+            startedAt: Date.now(),
+          });
+        }
+        // A continued agent keeps its console entry; only a fresh one opens another.
+        const existing = ev.resumed
+          ? ([...this.entries].reverse().find((x) => x.kind === 'agent' && x.id === ev.agentId) as (Entry & { v: number; kind: 'agent' }) | undefined)
+          : undefined;
+        if (existing) {
+          existing.status = 'running';
+          existing.summary = undefined;
+          this.touch(existing);
+        } else {
+          this.push({ kind: 'agent', id: ev.agentId, label: ev.label, name: ev.name, background: ev.background, t: this.rel(), status: 'running' });
+        }
+        this.log(`agent ${ev.name ?? type} ${ev.resumed ? 'resumed' : 'started'}`, C.cyan);
         break;
+      }
       case 'agent_end': {
+        const row = this.agentRows.get(ev.agentId);
+        const state: AgentState = ev.ok ? 'done' : row?.state === 'stopped' ? 'stopped' : 'failed';
+        if (row) {
+          row.state = state;
+          row.detail = '';
+          row.endedAt = Date.now();
+        }
         const e = [...this.entries].reverse().find((x) => x.kind === 'agent' && x.id === ev.agentId) as (Entry & { v: number; kind: 'agent' }) | undefined;
         if (e) {
-          e.status = ev.ok ? 'done' : 'failed';
+          e.status = state;
+          e.detail = undefined;
           e.summary = ev.summary;
           this.touch(e);
         }
-        this.log(`agent ${ev.label} ${ev.ok ? 'done' : 'failed'}`, ev.ok ? C.green : C.red);
+        this.log(`agent ${ev.name ?? ev.label} ${ev.ok ? 'done' : 'failed'}`, ev.ok ? C.green : C.red);
         this.refreshConsilium();
         break;
       }
@@ -446,14 +542,27 @@ export class UiStore {
           this.contextTokens = ev.contextTokens;
           this.contextWindow = ev.contextWindow;
           this.refreshContext();
+        } else {
+          const row = this.agentRows.get(ev.agentId);
+          if (row) row.tokens = ev.total.inputTokens + ev.total.outputTokens;
         }
         this.changed();
         break;
       }
-      case 'status':
+      case 'status': {
         if (ev.agentId === 'main' || this.running) this.status = { state: ev.state, detail: ev.detail };
+        const row = this.agentRows.get(ev.agentId);
+        if (row && row.state === 'running') {
+          row.detail = ev.detail ?? ev.state;
+          const e = [...this.entries].reverse().find((x) => x.kind === 'agent' && x.id === ev.agentId) as (Entry & { v: number; kind: 'agent' }) | undefined;
+          if (e && e.status === 'running') {
+            e.detail = row.detail;
+            this.touch(e);
+          }
+        }
         this.changed();
         break;
+      }
       case 'notice':
         this.push({ kind: 'notice', level: ev.level, text: ev.text, t: this.rel() });
         this.log(ev.text.slice(0, 40), ev.level === 'error' ? C.red : ev.level === 'warn' ? C.amber : C.muted);
@@ -463,6 +572,10 @@ export class UiStore {
           this.todos = ev.todos;
           this.refreshConsilium();
         }
+        break;
+      case 'schedule':
+        this.scheduled = ev.items;
+        this.changed();
         break;
       case 'tracker_changed':
         this.refreshConsilium();

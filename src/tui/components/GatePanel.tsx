@@ -4,6 +4,7 @@ import { centerGate, gateSize, renderGate } from '../gate.js';
 import { fmtClock, seg, truncate, type Line } from '../lines.js';
 import type { UiStore } from '../store.js';
 import { C } from '../theme.js';
+import { scheduleLines, scheduleNote } from './SchedulePanel.js';
 import { Lines } from './Lines.js';
 
 function header(title: string, note: string, width: number, color: string = C.gold): Line {
@@ -60,14 +61,24 @@ export function GatePanel({ store, width, height }: { store: UiStore; width: num
     : [[seg('REPO    ', C.muted), seg('(not a git repository)', C.muted)]];
 
   const files = git?.files ?? [];
-  const treeRows = Math.max(3, height - size.height - stageLines.length - 14);
-  const tree: Line[] = files.slice(0, treeRows).map((f) => {
+  const rows = Math.max(3, height - size.height - stageLines.length - 14);
+  // Deferred work owns this slot: it is always visible, so an empty schedule reads as "nothing deferred"
+  // rather than as a missing panel. The working tree keeps what is left over, and yields it once work is
+  // actually queued.
+  const schedule = scheduleLines(store.scheduled, inner, rows);
+  const idle = store.scheduled.length === 0;
+  // The tree lives on what the schedule leaves: its own header, the blank line above it, and the
+  // "... n more" tail all come out of this budget, or the panel overflows and loses its footer.
+  const treeRows = Math.max(1, rows - schedule.length - 3);
+  const shown = files.slice(0, files.length > treeRows ? treeRows - 1 : treeRows);
+
+  const tree: Line[] = shown.map((f) => {
     const stat = `+${f.added} -${f.removed}`;
     const statusColor = f.status === '??' ? C.muted : f.status.includes('A') ? C.green : f.status.includes('D') ? C.red : C.amber;
     const pathW = Math.max(6, inner - 4 - stat.length);
     return [seg(f.status.padEnd(3), statusColor), seg(truncate(f.path, pathW).padEnd(pathW), C.text), seg(stat, C.muted)];
   });
-  if (files.length > treeRows) tree.push([seg(`... ${files.length - treeRows} more`, C.dim)]);
+  if (files.length > shown.length) tree.push([seg(`... ${files.length - shown.length} more`, C.dim)]);
   if (!files.length) tree.push([seg('(working tree clean)', C.dim)]);
 
   return (
@@ -80,8 +91,15 @@ export function GatePanel({ store, width, height }: { store: UiStore; width: num
       <Box height={1} />
       <Lines lines={origin} />
       <Box height={1} />
-      <Lines lines={[header('WORKING TREE', `${files.length} changed`, inner, C.bronze)]} />
-      <Lines lines={tree} />
+      <Lines lines={[header('SCHEDULE', scheduleNote(store.scheduled), inner, C.bronze)]} />
+      <Lines lines={schedule} />
+      {idle ? (
+        <>
+          <Box height={1} />
+          <Lines lines={[header('WORKING TREE', `${files.length} changed`, inner, C.bronze)]} />
+          <Lines lines={tree} />
+        </>
+      ) : null}
       <Box flexGrow={1} />
       <Lines
         lines={[

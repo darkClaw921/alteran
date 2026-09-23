@@ -33,9 +33,10 @@ export class SessionStore {
     private root: string,
     meta: Omit<SessionMeta, 'type' | 'id' | 'createdAt'>,
     id?: string,
+    /** Where the file lives; subagent transcripts sit in a folder beside their session. */
+    dir = SessionStore.dir(root),
   ) {
     this.id = id ?? crypto.randomUUID();
-    const dir = SessionStore.dir(root);
     fs.mkdirSync(dir, { recursive: true });
     this.file = path.join(dir, `${this.id}.jsonl`);
     if (!fs.existsSync(this.file)) {
@@ -47,6 +48,15 @@ export class SessionStore {
 
   static dir(root: string) {
     return path.join(alteranHome(), 'sessions', projectSlug(root));
+  }
+
+  /** Transcripts of the agents this session delegated to, one file per agent name. */
+  static agentDir(root: string, sessionId: string) {
+    return path.join(SessionStore.dir(root), `${sessionId}.agents`);
+  }
+
+  static forAgent(parent: SessionStore, name: string, meta: Omit<SessionMeta, 'type' | 'id' | 'createdAt'>): SessionStore {
+    return new SessionStore(meta.root, meta, name, SessionStore.agentDir(meta.root, parent.id));
   }
 
   private write(line: Line) {
@@ -84,6 +94,21 @@ export class SessionStore {
       } catch {}
     }
     return { messages: sanitizeHistory(messages), meta };
+  }
+
+  /** Transcripts of the agents a session delegated to, newest first. */
+  static agents(root: string, sessionId: string): SessionSummary[] {
+    const dir = SessionStore.agentDir(root, sessionId);
+    if (!fs.existsSync(dir)) return [];
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith('.jsonl'))
+      .map((f) => {
+        const file = path.join(dir, f);
+        const { messages, meta } = SessionStore.load(file);
+        return { id: f.replace(/\.jsonl$/, ''), file, title: meta?.title ?? '(no task)', updatedAt: fs.statSync(file).mtime, messages: messages.length };
+      })
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
   }
 
   static list(root: string): SessionSummary[] {

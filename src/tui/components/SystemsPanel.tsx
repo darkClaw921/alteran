@@ -5,6 +5,7 @@ import type { UiStore } from '../store.js';
 import type { Runtime } from '../../core/runtime.js';
 import { contextBar } from '../../core/context.js';
 import { C, CONTEXT_COLORS, type Color } from '../theme.js';
+import { agentLines, agentsNote } from './AgentsPanel.js';
 import { Lines } from './Lines.js';
 
 function header(title: string, note: string, width: number, color: Color = C.gold): Line {
@@ -90,11 +91,15 @@ export function SystemsPanel({ store, rt, width, height }: { store: UiStore; rt:
     tests?.coverage != null ? meter('COVERAGE', tests.coverage / 100, 'covered', inner, C.green) : meter('MCP', mcp.length ? connected / mcp.length : 0, `${connected}/${mcp.length} servers`, inner, connected ? C.green : C.dim),
   ];
 
-  const graphHeight = Math.max(4, Math.min(9, height - 34));
+  // AGENTS only earns its space once something has been delegated.
+  const agentRows = store.agentTree().length ? Math.max(2, Math.min(6, store.agentTree().length + (height > 44 ? 1 : 0))) : 0;
+  const agents = agentRows ? agentLines(store, inner, agentRows) : [];
+
+  const graphHeight = Math.max(4, Math.min(9, height - 34 - (agents.length ? agents.length + 2 : 0)));
   const graph = burnGraph(store, inner, graphHeight);
 
   const cons = store.consilium;
-  const consRows = Math.max(3, Math.min(8, height - 30 - graphHeight));
+  const consRows = Math.max(3, Math.min(8, height - 30 - graphHeight - (agents.length ? agents.length + 2 : 0)));
   const items = cons.items.slice(0, consRows).map((i) => [seg(i.mark + ' ', i.color), seg(truncate(i.title, inner - 4), i.color === C.muted ? C.muted : C.text)] as Line);
   if (cons.items.length > consRows) items.push([seg(`... ${cons.items.length - consRows} more`, C.dim)]);
   if (!items.length) items.push([seg('(no tasks)', C.dim)]);
@@ -125,6 +130,13 @@ export function SystemsPanel({ store, rt, width, height }: { store: UiStore; rt:
       <Lines lines={[header('CONSILIUM', `${cons.title} ${cons.note}`, inner)]} />
       <Lines lines={items} />
       <Box height={1} />
+      {agents.length > 0 && (
+        <>
+          <Lines lines={[header('AGENTS', agentsNote(store), inner, C.bronze)]} />
+          <Lines lines={agents} />
+          <Box height={1} />
+        </>
+      )}
       <Lines lines={[header('EVENT LOG', '', inner, C.bronze)]} />
       <Lines lines={events} />
       <Box height={1} />

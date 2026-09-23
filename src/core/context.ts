@@ -29,12 +29,15 @@ export interface ContextReport {
   /** Prompt tokens of the last request, straight from the provider. */
   measured: number;
   model: string;
+  /** Session totals, so a caching regression shows up as a number instead of a surprise bill. */
+  cache: { read: number; written: number; fresh: number; ttl: '5m' | '1h' };
 }
 
 /** Rough token count: ~3.5 characters per token across code and prose. */
 export const estimateTokens = (text: string): number => (text ? Math.ceil(text.length / 3.5) : 0);
 
 export function contextBreakdown(rt: Runtime, agent: Agent = rt.main): ContextReport {
+  const u = agent.usage;
   const sections = systemSections(rt.ext, rt.envInfo(agent.model), rt.promptCaps(agent));
   const instructions = estimateTokens(sections.instructions);
   const catalog = estimateTokens(sections.agents) + estimateTokens(sections.skills);
@@ -79,7 +82,14 @@ export function contextBreakdown(rt: Runtime, agent: Agent = rt.main): ContextRe
   ];
   const used = parts.reduce((s, p) => s + p.tokens, 0);
   parts.push({ key: 'free', label: 'free', tokens: Math.max(0, window - used), glyph: '-' });
-  return { parts, used, window, measured: agent.contextTokens, model: agent.model.id };
+  return {
+    parts,
+    used,
+    window,
+    measured: agent.contextTokens,
+    model: agent.model.id,
+    cache: { read: u.cacheReadTokens, written: u.cacheWriteTokens, fresh: u.inputTokens, ttl: rt.cacheTtl },
+  };
 }
 
 /** Proportional bar: one glyph run per part, widths summing to `width`. */
@@ -102,6 +112,19 @@ export function contextBar(report: ContextReport, width: number): Array<{ key: C
 
 const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n));
 
+/**
+ * Cache health in one line. A caching regression is silent — requests keep succeeding, the bill
+ * just goes up — so the share read from cache is the only thing that says it still works.
+ */
+export function cacheLine(report: ContextReport): string {
+  const { read, written, fresh, ttl } = report.cache;
+  const total = read + written + fresh;
+  if (!total) return `Prompt cache: ${ttl} entries, nothing sent yet.`;
+  const share = Math.round((read / total) * 100);
+  const note = read === 0 ? '  — nothing is being reused; the prefix changes every request' : '';
+  return `Prompt cache (${ttl}): ${share}% of prompt tokens read from cache — ${fmt(read)} read, ${fmt(written)} written, ${fmt(fresh)} fresh.${note}`;
+}
+
 /** Plain-text report for `/context` in headless mode and for the CLI. */
 export function formatContext(report: ContextReport): string {
   const pct = (n: number) => `${((n / report.window) * 100).toFixed(1)}%`.padStart(6);
@@ -117,5 +140,6 @@ export function formatContext(report: ContextReport): string {
     report.measured
       ? `Last request measured ${fmt(report.measured)} prompt tokens; the split above is estimated (~3.5 chars per token).`
       : 'Nothing sent yet; the split above is estimated (~3.5 chars per token).',
+    cacheLine(report),
   ].join('\n');
 }

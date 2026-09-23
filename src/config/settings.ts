@@ -95,6 +95,15 @@ export const SettingsSchema = z.object({
   theme: z.enum(['dark', 'contrast', 'design']).optional(),
   /** Per-turn token budget shown in the status bar. */
   budgetTokens: z.number().optional(),
+  /** Prompt cache: `1h` entries survive the pauses of an interactive session, `5m` is cheaper to write. */
+  cache: z.object({ ttl: z.enum(['5m', '1h']).optional() }).optional(),
+  /** Delegation limits: how deep agents may nest and how many may run at once. */
+  agents: z
+    .object({
+      maxDepth: z.number().int().min(1).max(5).optional(),
+      maxConcurrent: z.number().int().min(1).max(32).optional(),
+    })
+    .optional(),
 }).loose();
 export type Settings = z.infer<typeof SettingsSchema>;
 

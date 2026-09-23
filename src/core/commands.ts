@@ -32,6 +32,7 @@ const BUILTIN: SlashCommandInfo[] = [
   { name: 'plan', description: 'Enter plan mode (read-only) and plan the given task', hint: '[task]', origin: 'builtin' },
   { name: 'create-tasks', description: 'Decompose a plan into phased tracker tasks', hint: '[plan text | file | empty = last plan]', origin: 'builtin' },
   { name: 'run-phase', description: 'Execute all tasks of phase N with the run-phase agent', hint: '<N | epic id | name>', origin: 'builtin' },
+  { name: 'schedule', description: 'Deferred work: list, add a reminder, or cancel one', hint: '[<delay> <text> | cancel <id>]', origin: 'builtin' },
   { name: 'phases', description: 'Show phases (epics) and progress', origin: 'builtin' },
   { name: 'tasks', description: 'Show ready tasks from the tracker', hint: '[phase]', origin: 'builtin' },
   { name: 'mode', description: 'Permission mode: default | acceptEdits | plan | autonomous', hint: '[mode]', origin: 'builtin' },
@@ -189,8 +190,12 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
 
     case 'reasoning': {
       if (!['off', 'low', 'medium', 'high'].includes(args)) return { kind: 'info', text: `Reasoning: ${rt.reasoning} (off | low | medium | high)` };
+      const before = rt.reasoning;
       rt.reasoning = args as typeof rt.reasoning;
-      return { kind: 'info', text: `Reasoning: ${rt.reasoning}` };
+      // The effort setting is part of the prompt, so changing it mid-conversation drops the
+      // cached history — worth saying out loud rather than discovering it on the bill.
+      const note = before !== rt.reasoning && rt.main.messages.length ? ' — the conversation will be re-read once at full price' : '';
+      return { kind: 'info', text: `Reasoning: ${rt.reasoning}${note}` };
     }
 
     case 'compact':
@@ -258,6 +263,39 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
         kind: 'info',
         text: [...rt.ext.agents.values()].map((a) => `${a.name}  (${a.origin}${a.model ? `, model ${a.model}` : ''})\n    ${a.description.replace(/\s+/g, ' ').slice(0, 150)}`).join('\n'),
       };
+    case 'schedule': {
+      const items = rt.schedule.list();
+      const show = () =>
+        items.length
+          ? items
+              .map((i) => {
+                const due = i.state === 'waiting' ? `in ${Math.max(0, Math.round((i.dueAt - Date.now()) / 1000))}s` : i.state;
+                return `${i.id}  ${i.kind.padEnd(7)}  ${due.padEnd(10)}${i.everyMs ? `every ${Math.round(i.everyMs / 1000)}s  ` : ''}${i.label}`;
+              })
+              .join('\n')
+          : 'Nothing is scheduled.';
+      if (!args) return { kind: 'info', text: show() };
+      const [first, ...rest] = args.split(/\s+/);
+      if (first === 'cancel' || first === 'rm') {
+        if (!rest.length) return { kind: 'error', text: 'Usage: /schedule cancel <id>' };
+        try {
+          const item = rt.schedule.cancel(rest[0]);
+          return { kind: 'info', text: `Cancelled ${item.id} (${item.label}).` };
+        } catch (e) {
+          return { kind: 'error', text: (e as Error).message };
+        }
+      }
+      // `/schedule 10m check the build` sets a reminder that comes back as a turn of its own.
+      const text = rest.join(' ');
+      if (!text) return { kind: 'error', text: 'Usage: /schedule <delay> <what to do then>, or /schedule cancel <id>' };
+      try {
+        const item = rt.schedule.create({ kind: 'prompt', in: first, message: text, label: text });
+        return { kind: 'info', text: `Scheduled ${item.id} for ${new Date(item.dueAt).toLocaleTimeString()}: ${item.label}` };
+      } catch (e) {
+        return { kind: 'error', text: (e as Error).message };
+      }
+    }
+
     case 'plugins':
       return { kind: 'info', text: rt.ext.plugins.map((p) => `${p.key}  ${p.version ?? ''}  (${p.origin})  ${p.root}`).join('\n') || 'No plugins loaded' };
 
@@ -285,7 +323,7 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
         kind: 'task',
         label: 'create-tasks: decomposing plan',
         run: async (signal) => {
-          const report = await rt.runSubagent({
+          const { report } = await rt.runSubagent({
             agentType: 'create-tasks',
             description: 'Decompose plan into tracker tasks',
             prompt: `The user approved this implementation plan. Decompose it into phases (epics) and tasks in the tracker.\n\n${planText}`,
@@ -320,7 +358,7 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
         kind: 'task',
         label: `run-phase: ${epic.title}`,
         run: async (signal) => {
-          const report = await rt.runSubagent({
+          const { report } = await rt.runSubagent({
             agentType: 'run-phase',
             description: epic.title,
             prompt: `Execute ${epic.title} (epic id ${epic.id}${n !== undefined ? `, phase number ${n}` : ''}). Complete every task of this phase in dependency order, verify, close each task, then report.`,

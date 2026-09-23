@@ -98,7 +98,7 @@ export class OpenAICompatProvider implements Provider {
       function: { name: t.name, description: t.description, parameters: t.inputSchema },
     }));
     const messages = toChatMessages(req.system, req.messages);
-    if (this.opts.anthropicCaching && /claude|anthropic/.test(req.model)) markCache(messages);
+    if (this.opts.anthropicCaching && /claude|anthropic/.test(req.model)) markCache(messages, req.cacheTtl);
 
     const body: ChatCompletionCreateParamsStreaming & Record<string, unknown> = {
       model: req.model,
@@ -186,20 +186,30 @@ export class OpenAICompatProvider implements Provider {
   }
 }
 
-/** Anthropic-style cache breakpoints for gateways that forward them (OpenRouter, polza). */
-function markCache(messages: ChatCompletionMessageParam[]) {
+/**
+ * Anthropic-style cache breakpoints for gateways that forward them (OpenRouter, polza): one on the
+ * system message, which covers the tools and system prefix, and one on the newest message, which
+ * carries the conversation so far.
+ *
+ * The tail is usually a `tool` message — a tool loop only produces a `user` message when a reminder
+ * rides along — so looking only for `user` left the whole tool history uncached. Verified against
+ * polza: a breakpoint on a `tool` message writes the prefix and the next request reads it back.
+ */
+function markCache(messages: ChatCompletionMessageParam[], ttl?: '5m' | '1h') {
+  const cacheControl = { type: 'ephemeral', ...(ttl === '1h' ? { ttl: '1h' } : {}) };
   const mark = (m: ChatCompletionMessageParam | undefined) => {
-    if (!m || (m.role !== 'system' && m.role !== 'user')) return;
+    if (!m || (m.role !== 'system' && m.role !== 'user' && m.role !== 'tool')) return;
     if (typeof m.content === 'string') {
-      (m as { content: unknown }).content = [{ type: 'text', text: m.content, cache_control: { type: 'ephemeral' } }];
+      (m as { content: unknown }).content = [{ type: 'text', text: m.content, cache_control: cacheControl }];
     } else if (Array.isArray(m.content) && m.content.length) {
       const last = m.content[m.content.length - 1] as unknown as Record<string, unknown>;
-      last.cache_control = { type: 'ephemeral' };
+      last.cache_control = cacheControl;
     }
   };
   mark(messages[0]);
   for (let i = messages.length - 1; i > 0; i--) {
-    if (messages[i].role === 'user') {
+    const role = messages[i].role;
+    if (role === 'user' || role === 'tool') {
       mark(messages[i]);
       break;
     }

@@ -92,9 +92,12 @@ function agentsBlock(ext: Extensions): string {
 let baseCache: string | null = null;
 function basePrompt(caps: PromptCapabilities = {}): string {
   if (baseCache == null) baseCache = fs.readFileSync(assetPath('prompts', 'system.md'), 'utf8');
+  let out = baseCache;
   // The tracker section is a third of the base prompt and useless without the tasks_* tools.
-  if (caps.tracker === false) return dropSection(baseCache, '# The CONSILIUM task tracker');
-  return baseCache;
+  if (caps.tracker === false) out = dropSection(out, '# The CONSILIUM task tracker');
+  // Likewise, telling an agent how to delegate when it cannot is pure cost.
+  if (caps.task === false) out = dropSection(out, '# Orchestration');
+  return out;
 }
 
 function dropSection(text: string, heading: string): string {
@@ -162,7 +165,9 @@ ${index.trim() || '(empty)'}`;
 export function subagentSystemPrompt(def: AgentDef, ext: Extensions, env: EnvInfo, caps: PromptCapabilities = {}): string {
   return [
     def.prompt.trim() || 'You are a helpful engineering subagent. Complete the delegated task and return a concise report.',
-    'You are running as a subagent inside the alteran terminal. Your final message is returned to the orchestrator as your report; make it self-contained.',
+    'You are running as an agent inside the alteran terminal, working on a task the orchestrator delegated to you. Your final message is returned to it as your report, so make it self-contained: it is the only thing that crosses back.',
+    'Reporting does not end you. The orchestrator can send you another message, and you will still have this conversation, so do not repeat your whole report when answering a follow-up.',
+    'When something needs time — a build, a deploy, a queue — you may schedule a check or a reminder for later instead of waiting on it. It comes back to you: if you have already reported by then, you are woken with this same context, and what you find goes on to the orchestrator.',
     memoryBlock(def, env.root),
     caps.skill === false ? '' : skillsBlock(ext),
     environmentBlock(env),
