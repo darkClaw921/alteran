@@ -1,4 +1,5 @@
 import type { Entry } from './store.js';
+import type { DiffLine } from '../tools/types.js';
 import { fmtClock, markdown, plain, seg, truncate, withRight, wrapLine, type Line } from './lines.js';
 import { cacheLine, contextBar, type ContextReport } from '../core/context.js';
 import { centerGate, gateSize, renderGate } from './gate.js';
@@ -210,6 +211,28 @@ function toolLines(e: Extract<Entry, { kind: 'tool' }>, width: number, expanded:
         push([seg(l, C.muted)], false);
       });
   }
+  return out;
+}
+
+/**
+ * A line diff as plain lines with a line-number gutter. Used where there is no transcript entry to
+ * hang it on — the permission prompt and the `/review` overlay — so a change is approved and
+ * reverted with the same picture in front of the reader.
+ */
+export function diffHunks(diff: DiffLine[], width = Number.POSITIVE_INFINITY, limit = 200): Line[] {
+  const lines = diff.slice(0, limit);
+  const numW = Math.max(3, ...lines.map((l) => String(l.lineNo ?? '').length));
+  const out: Line[] = [];
+  for (const l of lines) {
+    if (l.kind === 'sep') {
+      out.push([seg(' '.repeat(numW) + ' ...', C.dim)]);
+      continue;
+    }
+    const sign = l.kind === 'add' ? '+' : l.kind === 'del' ? '-' : ' ';
+    const color = l.kind === 'add' ? C.green : l.kind === 'del' ? C.red : C.muted;
+    out.push(...wrapLine([seg(String(l.lineNo ?? '').padStart(numW) + ' ', C.muted), seg(`${sign} ${l.text}`, color)], width));
+  }
+  if (diff.length > lines.length) out.push([seg(`… ${diff.length - lines.length} more diff lines`, C.dim)]);
   return out;
 }
 

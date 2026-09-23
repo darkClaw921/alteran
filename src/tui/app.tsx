@@ -1,5 +1,7 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, render, useApp, useInput, useStdin, useStdout, useWindowSize } from 'ink';
@@ -13,19 +15,31 @@ import type { AskQuestions } from '../tools/misc-tools.js';
 import { runShell } from '../tools/bash.js';
 import { packageRoot } from '../config/paths.js';
 import { gitDiff } from './git.js';
-import { fmtClock, fmtTokens, seg, truncate, wheelDelta, type Line } from './lines.js';
-import { UiStore } from './store.js';
+import { lineDiff } from '../tools/diff.js';
+import { previewWrite } from '../tools/fs-tools.js';
+import { diffHunks, shortenPaths } from './render.js';
+import { fmtClock, fmtTokens, lineWidth, seg, truncate, truncateLine, wheelDelta, type Line } from './lines.js';
+import { UiStore, searchEntries } from './store.js';
 import { startIntro, type IntroHandle } from './intro.js';
 import { SessionStore } from '../core/session.js';
 import { paint } from '../util/color.js';
 import { applyTheme, C, LEFT_WIDTH, RIGHT_WIDTH, SHOW_LEFT_MIN, SHOW_RIGHT_MIN, type ThemeName } from './theme.js';
-import { LiveTail, StaticTranscript, StatusLine, StreamView } from './components/Console.js';
+import { LiveTail, StaticTranscript, StatusLine, StreamView, entryOffsets } from './components/Console.js';
+import { SearchPanel, type SearchState } from './components/Search.js';
+import { ReviewPanel, type ReviewState } from './components/Review.js';
+import { agentRows, agentRowCount } from './components/AgentsPanel.js';
+import { scheduleRows } from './components/SchedulePanel.js';
+import { scheduleRowCount } from './components/GatePanel.js';
 import { DialogView, type DialogState } from './components/Dialog.js';
 import { ModelPickerView, type PickerState } from './components/ModelPicker.js';
 import { HelpPanel } from './components/Help.js';
 import { SessionPickerView, filterSessions, type SessionPickerState } from './components/SessionPicker.js';
 import { filterModels, fmtMoney } from '../providers/catalog.js';
 import { copyToClipboard } from './clipboard.js';
+import { lastAnswers, transcriptMarkdown } from './export.js';
+import { PasteBuffer, PASTE_ON, PASTE_OFF, editKey, pasteInto, type InputMode } from './editor.js';
+import { notification } from './notify.js';
+import { animatesSplash, motionLevel } from './motion.js';
 import { updateUserSettings } from '../config/settings.js';
 import { GatePanel } from './components/GatePanel.js';
 import { InputBox, SuggestionList, type Suggestion } from './components/InputBox.js';
@@ -83,8 +97,8 @@ function TopBar({ store, rt, width }: { store: UiStore; rt: Runtime; width: numb
     seg(' | ', C.dim),
     seg(`RUN ${fmtClock(store.elapsed)}`, C.muted),
   ];
-  const lw = left.reduce((s, x) => s + x.text.length, 0);
-  const rw = right.reduce((s, x) => s + x.text.length, 0);
+  const lw = lineWidth(left);
+  const rw = lineWidth(right);
   const line: Line = lw + rw + 2 > width ? [...left] : [...left, seg(' '.repeat(Math.max(1, width - lw - rw))), ...right];
   return <Lines lines={[line, [seg('='.repeat(width), C.rule)]]} />;
 }
@@ -121,8 +135,8 @@ function StatusBar({ store, rt, width }: { store: UiStore; rt: Runtime; width: n
     : [];
   const budget: Line = [seg(`BUDGET ${fmtTokens(store.contextTokens)}/${fmtTokens(store.contextWindow)} - ${pct}% LEFT`, C.muted)];
   const branch: Line = [seg(' | ', C.dim), seg(`[ ^ ${store.git?.isRepo ? (store.git.upstream ?? store.git.branch) : 'no git'} ]`, C.cyan)];
-  const lw = left.reduce((s, x) => s + x.text.length, 0);
-  const wide = (l: Line) => l.reduce((s, x) => s + x.text.length, 0);
+  const lw = lineWidth(left);
+  const wide = (l: Line) => lineWidth(l);
   // Drop the optional groups (key, then session) when the bar would not fit.
   let right: Line = [...budget, ...spent, ...keyLine, ...branch];
   if (lw + wide(right) + 2 > width) right = [...budget, ...spent, ...branch];
@@ -150,18 +164,6 @@ function InlineStatus({ store, rt, width }: { store: UiStore; rt: Runtime; width
     seg(` · ${git}`, C.cyan),
   ];
   return <Lines lines={[truncateLine(line, width)]} />;
-}
-
-function truncateLine(line: Line, width: number): Line {
-  const out: Line = [];
-  let used = 0;
-  for (const s of line) {
-    if (used >= width) break;
-    const text = s.text.slice(0, width - used);
-    used += text.length;
-    out.push({ ...s, text });
-  }
-  return out;
 }
 
 interface AppProps {
@@ -203,6 +205,31 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
   const [mouseOn, setMouseOn] = useState(!inline && rt.settings.mouse !== false);
   /** Help overlay: toggled with `?` or /help, scrolled with the arrows, never pushed to history. */
   const [help, setHelp] = useState<number | null>(null);
+  /** Transcript search (ctrl+f, /search): overlay, never pushed to the transcript. */
+  const [search, setSearch] = useState<SearchState | null>(null);
+  /** Diff review (/review): keep or revert the last applied edit. */
+  const [review, setReview] = useState<ReviewState | null>(null);
+  /**
+   * Which side panel has the keyboard, and on which row. Only the panel layout has panels, so this
+   * stays on the console there; `tab` cycles the sections that actually have something in them.
+   */
+  const [panelFocus, setPanelFocus] = useState<'console' | 'agents' | 'schedule'>('console');
+  const [panelIndex, setPanelIndex] = useState(0);
+  /** `vi` puts a normal mode in front of the line; `emacs` is the line as it always was. */
+  const inputMode: InputMode = rt.settings.input?.mode ?? 'emacs';
+  /** Reduced motion keeps every readout and drops the decorative movement. */
+  const motion = motionLevel(rt.settings);
+  const [draftMode, setDraftMode] = useState<'insert' | 'normal'>('insert');
+  /** Collects a bracketed paste, which arrives announced instead of as keystrokes. */
+  const pasteRef = useRef(new PasteBuffer());
+  /** When Ctrl+X was last pressed, so Ctrl+E right after it means "open the editor". */
+  const ctrlXAt = useRef(0);
+  // The raw-read handler runs from an effect that must not re-subscribe on every keystroke, so the
+  // line it edits is read through refs.
+  const inputRef = useRef(input);
+  inputRef.current = input;
+  const cursorRef = useRef(cursor);
+  cursorRef.current = cursor;
 
   const abortRef = useRef<AbortController | null>(null);
   /** Reports from background agents that finished while nothing was running. */
@@ -254,17 +281,30 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
   // so repainting is free; from the first message on, the console stays perfectly still, because
   // any repaint would drag a scrolled-up terminal back to the bottom.
   const started = store.entries.some((e) => e.kind === 'user');
-  store.animateSplash = !started;
-  animateRef.current = !busyRef.current && !started;
+  // Under reduced motion the start screen is drawn once and left alone: everything it says is still
+  // there, only the rim pulse and the drifting dust are not.
+  store.animateSplash = animatesSplash(motion) && !started;
+  animateRef.current = animatesSplash(motion) && !busyRef.current && !started;
 
   const width = size.columns ?? 120;
   const height = size.rows ?? 40;
   const showLeft = width >= SHOW_LEFT_MIN && !inline;
   const showRight = width >= SHOW_RIGHT_MIN && !inline;
-  const consoleWidth = Math.max(40, width - (showLeft ? LEFT_WIDTH + 1 : 0) - (showRight ? RIGHT_WIDTH + 1 : 0) - 4);
+  // Panels are already dropped by width, so nothing is left to subtract: the console takes what
+  // there is. A floor here would draw past the right edge of a terminal narrower than the floor.
+  const consoleWidth = Math.max(20, width - (showLeft ? LEFT_WIDTH + 1 : 0) - (showRight ? RIGHT_WIDTH + 1 : 0) - 4);
   const bodyHeight = Math.max(8, height - 4);
 
   const pushInfo = useCallback((text: string, title?: string) => store.push({ kind: 'info', text, title }), [store]);
+
+  /** One notification, if the user asked for them and the work was long enough to warrant one. */
+  const announce = useCallback(
+    (title: string, body: string, elapsedMs: number) => {
+      const seq = notification(rt.settings.notify, { kind: 'turn', elapsedMs, title, body });
+      if (seq) stdout.write(seq);
+    },
+    [rt, stdout],
+  );
 
   const runTask = useCallback(
     async (fn: (signal: AbortSignal) => Promise<unknown>, prompt?: string) => {
@@ -273,6 +313,7 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
       const ac = new AbortController();
       abortRef.current = ac;
       store.startRun(prompt ?? store.lastPrompt);
+      const startedAt = Date.now();
       try {
         await fn(ac.signal);
       } catch (e) {
@@ -283,10 +324,13 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
         abortRef.current = null;
         store.endRun();
       }
+      // Only worth a bell if the user had time to look away — and never for an interrupt they
+      // performed themselves, which they already know about.
+      if (!ac.signal.aborted) announce('alteran', (store.lastPrompt ?? '').split('\n')[0].slice(0, 80), Date.now() - startedAt);
       // A background agent may have reported while this run held the console.
       if (wakeRef.current.length) void drainWakes();
     },
-    [store, drainWakes],
+    [store, drainWakes, announce],
   );
   runTaskRef.current = runTask;
 
@@ -299,6 +343,17 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
 
   // A finished background agent has to reach the orchestrator on its own; the user may never type again.
   useEffect(() => {
+    // Unsubscribe too: a finished agent that has to wait for the user to type deserves a nudge, but
+    // a retry loop must not turn into a stream of notifications.
+    let startedAt = Date.now();
+    const off = rt.bus.on((ev) => {
+      if (ev.type === 'agent_start') startedAt = Date.now();
+      if (ev.type !== 'agent_end' || !ev.name) return;
+      // Only background agents end without the user watching: a blocking `Task` returns into the
+      // turn they are looking at, and the orchestrator's own turn is announced by `runTask`.
+      if (busyRef.current) return;
+      announce(`agent ${ev.name}`, ev.ok ? 'finished' : 'failed', Date.now() - startedAt);
+    });
     rt.onWake = (agentId, text) => {
       if (agentId !== 'main') return;
       wakeRef.current.push(text);
@@ -306,8 +361,9 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
     };
     return () => {
       rt.onWake = undefined;
+      off();
     };
-  }, [rt, drainWakes]);
+  }, [rt, drainWakes, announce]);
 
   const handleSubmit = useCallback(
     async (raw: string) => {
@@ -341,6 +397,7 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
             return;
           case 'ui':
             if (res.action === 'help') setHelp((h) => (h === null ? 0 : null));
+            if (res.action === 'search') setSearch({ query: res.arg ?? '', index: 0, matches: searchEntries(store.entries, res.arg ?? '') });
             if (res.action === 'resume') {
               const wanted = res.arg ? resumeList(rt).find((x) => x.id.startsWith(res.arg!)) : undefined;
               if (res.arg && !wanted) store.push({ kind: 'error', text: `No session starts with "${res.arg}"` });
@@ -355,7 +412,9 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
               if (store.contextReport) store.push({ kind: 'context', report: store.contextReport });
               store.changed();
             }
-            if (res.action === 'copy') copyLast();
+            if (res.action === 'copy') copyLast(res.arg);
+            if (res.action === 'export') exportTranscript(res.arg);
+            if (res.action === 'review') reviewLastEdit();
             if (res.action === 'bare') onLayout(!inline);
             if (res.action === 'mouse') toggleMouse();
             return;
@@ -472,19 +531,114 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
     [rt, store, pushInfo],
   );
 
-  /** Copy the last assistant answer (or the last console entry) to the clipboard. */
-  const copyLast = useCallback(() => {
-    const entry = [...store.entries]
-      .reverse()
-      .find((e) => e.kind === 'assistant' || e.kind === 'info' || e.kind === 'plan' || e.kind === 'diff' || e.kind === 'error');
-    const text = entry && 'text' in entry ? entry.text : '';
-    if (!text.trim()) {
-      pushInfo('Nothing to copy yet.');
+  /**
+   * Copy to the clipboard: the last answer by default, or `/copy 3` for the last three, or
+   * `/copy all` for the whole transcript as markdown.
+   */
+  const copyLast = useCallback(
+    (arg?: string) => {
+      let text: string;
+      const whole = arg?.trim() === 'all';
+      const count = whole ? 0 : Number(arg);
+      if (whole) text = transcriptMarkdown(store.entries, { id: rt.session.id, model: rt.model.id, date: new Date() });
+      else if (Number.isInteger(count) && count > 1) text = lastAnswers(store.entries, count);
+      else {
+        const entry = [...store.entries]
+          .reverse()
+          .find((e) => e.kind === 'assistant' || e.kind === 'info' || e.kind === 'plan' || e.kind === 'diff' || e.kind === 'error');
+        text = entry && 'text' in entry ? entry.text : '';
+      }
+      if (!text.trim()) {
+        pushInfo('Nothing to copy yet.');
+        return;
+      }
+      const ok = copyToClipboard(text, stdout);
+      pushInfo(ok ? `Copied ${text.length} characters to the clipboard.` : 'Could not reach a clipboard tool.');
+    },
+    [store, pushInfo, stdout, rt],
+  );
+
+  /**
+   * Ctrl+X Ctrl+E hands the draft to `$EDITOR`. The TUI cannot draw while another program owns the
+   * terminal, so it steps out of the alternate screen, gives the editor the real tty, and repaints
+   * from scratch on the way back — the same trick the layout switch uses.
+   */
+  const openEditor = useCallback(async () => {
+    const editor = rt.settings.editor ?? process.env.VISUAL ?? process.env.EDITOR ?? 'vi';
+    const file = path.join(os.tmpdir(), `alteran-draft-${process.pid}-${Date.now()}.md`);
+    const original = input;
+    fs.writeFileSync(file, original);
+    if (!inline) stdout.write('\u001b[?1049l');
+    stdout.write('\u001b[?25h');
+    await new Promise<void>((resolve) => {
+      const child = spawn(`${editor} ${JSON.stringify(file)}`, { stdio: 'inherit', shell: true });
+      child.on('error', () => resolve());
+      child.on('close', () => resolve());
+    });
+    let text = original;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch {}
+    fs.rmSync(file, { force: true });
+    if (!inline) stdout.write('\u001b[?1049h');
+    // The editor painted over the whole screen, so Ink's idea of what is on it is gone.
+    clearScreen();
+    const clean = text.replace(/\n+$/, '');
+    setInput(clean);
+    setCursor(clean.length);
+    setDraftMode('insert');
+  }, [rt, input, inline, stdout, clearScreen]);
+
+  /**
+   * `/review`: the last applied edit as a hunk diff, for keeping or reverting. It reads the very
+   * checkpoint the write tools recorded, so "revert" restores exactly the bytes that were there
+   * before, with no second look at the file.
+   */
+  const reviewLastEdit = useCallback(() => {
+    const last = rt.checkpoints
+      .list()
+      .filter((e) => e.applied)
+      .at(-1);
+    if (!last) {
+      pushInfo('No applied edit to review in this session yet.');
       return;
     }
-    const ok = copyToClipboard(text, stdout);
-    pushInfo(ok ? `Copied ${text.length} characters to the clipboard.` : 'Could not reach a clipboard tool.');
-  }, [store, pushInfo, stdout]);
+    const diff = lineDiff(last.before ?? '', last.after ?? '');
+    setReview({ file: last.file, tool: last.tool, diff: diff.lines, added: diff.added, removed: diff.removed, depth: rt.checkpoints.appliedCount });
+  }, [rt, pushInfo]);
+
+  /** `r` in the review overlay: take the edit back and restore the file to its pre-edit bytes. */
+  const revertReviewed = useCallback(() => {
+    const target = review;
+    if (!target) return;
+    rt.checkpoints.undo(1);
+    // The file on disk is no longer what the session last saw; the next edit must Read it again.
+    rt.fileState.delete(target.file);
+    setReview(null);
+    pushInfo(`Reverted ${target.tool} on ${shortenPaths(target.file)}.`);
+  }, [review, rt, pushInfo]);
+
+  /** `/export <path>` writes the transcript as markdown; without a path it says what it needs. */
+  const exportTranscript = useCallback(
+    (arg?: string) => {
+      if (!arg?.trim()) {
+        pushInfo('Usage: /export <path.md> — the transcript is written as markdown. Use /copy all to copy it instead.');
+        return;
+      }
+      const file = path.resolve(rt.cwd, arg.trim());
+      const markdown = transcriptMarkdown(store.entries, { id: rt.session.id, model: rt.model.id, date: new Date() });
+      try {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, markdown);
+      } catch (e) {
+        pushInfo(`Could not write ${file}: ${(e as Error).message}`);
+        return;
+      }
+      const rel = path.relative(rt.cwd, file);
+      pushInfo(`Exported ${store.entries.length} entries to ${rel && !rel.startsWith('..') ? rel : file}`);
+    },
+    [store, pushInfo, rt],
+  );
 
   const openResume = useCallback(() => {
     const sessions = resumeList(rt);
@@ -534,11 +688,51 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
   const onWheel = useCallback(
     (wheel: number) => {
       if (!wheel) return;
-      if (dialog || picker || sessionPicker || help !== null) return;
+      if (dialog || picker || sessionPicker || help !== null || search || review) return;
       setScroll((v) => Math.max(0, v + wheel));
     },
-    [dialog, picker, sessionPicker, help],
+    [dialog, picker, sessionPicker, help, search, review],
   );
+
+  /**
+   * `tab` cycles the console and the two panel sections that can be acted on. A section with
+   * nothing in it is skipped: focus should never land somewhere with no answer to a keystroke.
+   */
+  const cyclePanelFocus = useCallback(() => {
+    if (inline) return;
+    const has = { agents: store.agentTree().length > 0, schedule: store.scheduled.length > 0 };
+    const order: Array<'console' | 'agents' | 'schedule'> = ['console', ...(has.agents ? (['agents'] as const) : []), ...(has.schedule ? (['schedule'] as const) : [])];
+    const next = order[(order.indexOf(panelFocus) + 1) % order.length];
+    setPanelFocus(next);
+    setPanelIndex(0);
+  }, [inline, store, panelFocus]);
+
+  /**
+   * `x` on a focused row: cancel that agent, or drop that deferred item. The row is resolved
+   * through the same list function the panel drew, so the action can never land on a neighbour.
+   */
+  const cancelFocused = useCallback(() => {
+    if (panelFocus === 'agents') {
+      const row = agentRows(store, agentRowCount(store, bodyHeight))[panelIndex];
+      if (!row?.name || row.state !== 'running') {
+        pushInfo('That agent is not running; nothing to cancel.');
+        return;
+      }
+      rt.agents.stop(row.name);
+      pushInfo(`Cancelled ${row.name}.`);
+      return;
+    }
+    if (panelFocus === 'schedule') {
+      const row = scheduleRows(store.scheduled, scheduleRowCount(store, LEFT_WIDTH, bodyHeight))[panelIndex];
+      if (!row) return;
+      try {
+        rt.schedule.cancel(row.id);
+        pushInfo(`Cancelled ${row.id} (${row.label}).`);
+      } catch (e) {
+        pushInfo((e as Error).message);
+      }
+    }
+  }, [panelFocus, panelIndex, store, bodyHeight, rt, pushInfo]);
 
   /** Mouse reporting steals drag-selection, so it has to be one keystroke away. */
   const toggleMouse = useCallback(() => {
@@ -626,6 +820,17 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
     const onRaw = (raw: string) => {
       // Mouse reports are handled in useInput, which receives them parsed; ignore them here.
       if (wheelDelta(raw).isMouse) return;
+      // A bracketed paste is announced by its own markers. Catch it here, on the raw read, so the
+      // body never reaches useInput — there every newline would read as Enter and submit early.
+      if (pasteRef.current.active || raw.includes('\u001b[200~')) {
+        const pasted = pasteRef.current.feed(raw);
+        if (pasted === null) return;
+        const next = pasteInto({ text: inputRef.current, cursor: cursorRef.current, mode: 'insert' }, pasted);
+        setInput(next.text);
+        setCursor(next.cursor);
+        setDraftMode('insert');
+        return;
+      }
       const key = F_KEYS[raw];
       if (!key) return;
       if (key === 'f2') void showDiff();
@@ -666,6 +871,43 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
       }
       if (key.backspace || key.delete) return setSessionPicker({ ...p, query: p.query.slice(0, -1), index: 0 });
       if (ch && !key.ctrl && !key.meta) return setSessionPicker({ ...p, query: p.query + ch, index: 0 });
+      return;
+    }
+    if (panelFocus !== 'console') {
+      if (key.escape || key.tab) return cyclePanelFocus();
+      if (key.upArrow) return setPanelIndex((i) => Math.max(0, i - 1));
+      if (key.downArrow) return setPanelIndex((i) => i + 1);
+      if (ch === 'x' || key.delete) return cancelFocused();
+      if (key.ctrl && ch === 'c') return exit();
+      return;
+    }
+    if (review) {
+      if (ch === 'r') return revertReviewed();
+      if (key.escape || key.return || ch === 'a' || (key.ctrl && ch === 'c')) return setReview(null);
+      return;
+    }
+    if (search) {
+      const p = search;
+      const retype = (query: string) => setSearch({ query, index: 0, matches: searchEntries(store.entries, query) });
+      const step = (d: number) => {
+        const total = p.matches.length;
+        if (total) setSearch({ ...p, index: (p.index + d + total) % total });
+      };
+      /** Bring the matched entry into view. Only the panel layout can scroll its own view; the
+       *  console layout's scrollback belongs to the terminal, so there Enter walks the matches. */
+      const jump = () => {
+        if (inline) return step(1);
+        const i = p.matches[p.index];
+        if (i === undefined) return;
+        const offsets = entryOffsets(store, consoleWidth);
+        setScroll(Math.max(0, offsets[offsets.length - 1] - bodyHeight - offsets[i]));
+      };
+      if (key.escape || (key.ctrl && ch === 'c')) return setSearch(null);
+      if (key.return) return jump();
+      if (key.downArrow) return step(1);
+      if (key.upArrow) return step(-1);
+      if (key.backspace || key.delete) return retype(p.query.slice(0, -1));
+      if (ch && !key.ctrl && !key.meta) return retype(p.query + ch);
       return;
     }
     if (help !== null) {
@@ -786,9 +1028,23 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
       return;
     }
     if (key.ctrl && ch === 'd' && !input) return exit();
+    // Shift+Tab already cycles the permission mode, so the panels take Tab alone.
+    if (key.tab && !key.shift) return cyclePanelFocus();
+    if (key.ctrl && ch === 'f') {
+      setSearch({ query: '', index: 0, matches: [] });
+      return;
+    }
     if (key.escape) {
       if (busyRef.current) return interrupt();
-      if (input) {
+      // In vi the first escape leaves insert mode; clearing the line would throw the draft away.
+      if (inputMode === 'vi' && draftMode === 'insert' && input) {
+        const next = editKey({ text: input, cursor, mode: 'insert' }, { escape: true }, 'vi');
+        setInput(next.draft.text);
+        setCursor(next.draft.cursor);
+        setDraftMode(next.draft.mode);
+        return;
+      }
+      if (input && !(inputMode === 'vi' && draftMode === 'normal')) {
         setInput('');
         setCursor(0);
       }
@@ -823,6 +1079,25 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
       process.stderr.write(
         `KEY ${JSON.stringify(ch)} ${JSON.stringify(Object.keys(key).filter((k) => (key as any)[k] === true))} input=${JSON.stringify(input)} sugg=${suggestions.length}\n`,
       );
+    // vi's normal mode: keys move and edit instead of being typed. Ctrl chords stay as they are,
+    // so normal mode is a layer over the line rather than a second editor.
+    if (inputMode === 'vi' && draftMode === 'normal' && !key.ctrl && !key.meta) {
+      const next = editKey({ text: input, cursor, mode: 'normal' }, { ...key, ch }, 'vi');
+      setInput(next.draft.text);
+      setCursor(next.draft.cursor);
+      setDraftMode(next.draft.mode);
+      return;
+    }
+    // Ctrl+X Ctrl+E hands the draft to $EDITOR, the way a shell does it.
+    if (key.ctrl && ch === 'x') {
+      ctrlXAt.current = Date.now();
+      return;
+    }
+    if (key.ctrl && ch === 'e' && Date.now() - ctrlXAt.current < 1500) {
+      ctrlXAt.current = 0;
+      void openEditor();
+      return;
+    }
     if (suggestions.length) {
       if (key.upArrow) return setSuggestIdx((i) => (i - 1 + suggestions.length) % suggestions.length);
       if (key.downArrow) return setSuggestIdx((i) => (i + 1) % suggestions.length);
@@ -899,9 +1174,9 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
       return;
     }
     if (ch && !key.ctrl && !key.meta) {
-      const text = ch.replace(/\r/g, '\n');
-      setInput(input.slice(0, cursor) + text + input.slice(cursor));
-      setCursor(cursor + text.length);
+      const next = pasteInto({ text: input, cursor, mode: draftMode }, ch.replace(/\r/g, '\n'));
+      setInput(next.text);
+      setCursor(next.cursor);
     }
   });
 
@@ -913,20 +1188,30 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
 
   const pickerHeight = Math.max(14, Math.min(26, bodyHeight - 8));
   const helpHeight = Math.max(10, Math.min(28, bodyHeight - 6));
+  const searchHeight = Math.max(10, Math.min(24, bodyHeight - 8));
+  const reviewHeight = Math.max(12, bodyHeight - 6);
   const sessionHeight = Math.max(12, Math.min(24, bodyHeight - 8));
   const inputAreaHeight = sessionPicker
     ? sessionHeight
-    : help !== null
-      ? helpHeight
-      : picker
-        ? pickerHeight
-        : dialog
-          ? Math.min(14, 6 + dialog.options.length + dialog.body.length)
-          : 3 + Math.min(7, input.split('\n').length - 1) + (queue.length ? 1 : 0);
-  const suggestionHeight = suggestions.length && !dialog && !picker && !sessionPicker && help === null ? suggestions.length : 0;
+    : review
+      ? reviewHeight
+      : search
+        ? searchHeight
+      : help !== null
+        ? helpHeight
+        : picker
+          ? pickerHeight
+          : dialog
+            ? Math.min(14, 6 + dialog.options.length + dialog.body.length)
+            : 3 + Math.min(7, input.split('\n').length - 1) + (queue.length ? 1 : 0);
+  const suggestionHeight = suggestions.length && !dialog && !picker && !sessionPicker && help === null && !search && !review ? suggestions.length : 0;
 
   const overlay = sessionPicker ? (
     <SessionPickerView state={sessionPicker} width={consoleWidth} height={sessionHeight} />
+  ) : review ? (
+    <ReviewPanel state={review} width={consoleWidth} height={reviewHeight} />
+  ) : search ? (
+    <SearchPanel state={search} store={store} width={consoleWidth} height={searchHeight} canScroll={!inline} />
   ) : help !== null ? (
     <HelpPanel text={helpText(rt)} width={consoleWidth} height={helpHeight} scroll={help} />
   ) : picker ? (
@@ -987,7 +1272,7 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
       <Box flexDirection="row" height={bodyHeight}>
         {showLeft ? (
           <>
-            <GatePanel store={store} width={LEFT_WIDTH} height={bodyHeight} />
+            <GatePanel store={store} width={LEFT_WIDTH} height={bodyHeight} scheduleSelected={panelFocus === 'schedule' ? panelIndex : -1} />
             <Divider height={bodyHeight} />
           </>
         ) : null}
@@ -999,7 +1284,7 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
         {showRight ? (
           <>
             <Divider height={bodyHeight} />
-            <SystemsPanel store={store} rt={rt} width={RIGHT_WIDTH} height={bodyHeight} />
+            <SystemsPanel store={store} rt={rt} width={RIGHT_WIDTH} height={bodyHeight} agentSelected={panelFocus === 'agents' ? panelIndex : -1} />
           </>
         ) : null}
       </Box>
@@ -1040,6 +1325,8 @@ function helpText(rt: Runtime): string {
     '  ctrl+b side panels on/off — the console-only default keeps mouse selection to console text',
     '  wheel scrolls the transcript; F7 (or /mouse) turns mouse reporting off so drag-select works again',
     '  ctrl+y copy the last answer to the clipboard (cmd+c still copies a mouse selection)',
+    '  ctrl+f search the transcript (enter jumps to the match in the panel layout)',
+    '  tab focuses the AGENTS / SCHEDULE panels (panel layout); up/down pick a row, x cancels it',
     '  pgup/pgdn scroll   ctrl+c interrupt or exit   ctrl+d exit',
     '  F2 diff   F3 run tests   F4 phases   F5 rerun stage   F6 approve pending permission',
     '',
@@ -1106,12 +1393,18 @@ export async function startTui(opts: TuiOptions, io?: TuiIo): Promise<void> {
       store.awaiting = true;
       store.changed();
       try {
+        // Show what the edit would do, not just which tool wants to run: approving a change you
+        // cannot see is the same as not being asked.
+        const preview = previewWrite(req.tool, req.input, rt.cwd);
+        // Left unwrapped: the dialog wraps its body itself, so it needs no width from here.
+        const diffBody = preview ? diffHunks(lineDiff(preview.before, preview.after).lines, Number.POSITIVE_INFINITY, 60) : [];
         return await ask<PermissionAnswer>(
           (resolve) => ({
             title: 'IRIS — PERMISSION REQUIRED',
             body: [
               [seg(`${req.agentLabel} wants to use `, C.muted), seg(req.tool, C.gold, { bold: true })],
               [seg(truncate(req.summary || JSON.stringify(req.input), 400), C.text)],
+              ...(preview ? [[seg(`diff of ${shortenPaths(preview.file)}:`, C.muted)], ...diffBody] : []),
               ...(req.reason ? [[seg(req.reason, C.muted)]] : []),
             ],
             options: [
@@ -1257,9 +1550,18 @@ export async function startTui(opts: TuiOptions, io?: TuiIo): Promise<void> {
       return false;
     }
   };
+  // Bracketed paste in both layouts: it is what makes a pasted paragraph arrive whole instead of
+  // as a burst of keystrokes whose newlines each submit the line.
+  const setBracketedPaste = (on: boolean) => {
+    try {
+      out.write(on ? PASTE_ON : PASTE_OFF);
+    } catch {}
+  };
+  setBracketedPaste(true);
   if (!io)
     process.once('exit', () => {
       setMouse(false);
+      setBracketedPaste(false);
       printResumeHint(rt, process.stdout);
     });
 

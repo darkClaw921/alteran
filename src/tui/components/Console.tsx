@@ -1,5 +1,5 @@
 import { Box, Static } from 'ink';
-import { fmtClock, fmtTokens, seg, truncate, type Line } from '../lines.js';
+import { fmtClock, fmtTokens, lineWidth, seg, truncate, type Line } from '../lines.js';
 import { entryLines } from '../render.js';
 import type { UiStore } from '../store.js';
 import { C, SPINNER_VERBS } from '../theme.js';
@@ -62,11 +62,23 @@ export function StatusLine({ store, width }: { store: UiStore; width: number }) 
     seg(`  (esc to interrupt - ${secs}s - ^ ${fmtTokens(store.runTokens)} tokens - chevron ${store.stages.locked}/9${detail})`, C.muted),
   ];
   const t: Line = [seg(fmtClock(store.elapsed), C.muted)];
-  const used = line.reduce((w, s) => w + s.text.length, 0);
+  const used = lineWidth(line);
   const pad = Math.max(1, width - used - 8);
   return (
     <Box width={width} height={1}>
       <Lines lines={[[...line, seg(' '.repeat(pad)), ...t]]} />
     </Box>
   );
+}
+
+/** Line offset of every entry in the rendered transcript, plus the total at the end. */
+export function entryOffsets(store: UiStore, width: number): number[] {
+  const offsets: number[] = [];
+  let n = 0;
+  for (const e of store.entries) {
+    offsets.push(n);
+    n += entryLines(e, width, store.expanded, store.tick).length;
+  }
+  offsets.push(n);
+  return offsets;
 }

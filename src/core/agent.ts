@@ -70,7 +70,7 @@ class ToolTimeout extends Error {
  * not a defect in the request, and re-rolling it is exactly what a person would do by hand.
  */
 const TRANSIENT =
-  /timed?\s*out|timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|socket hang up|fetch failed|network|stream ended without|overload|unavailable|rate.?limit/i;
+  /timed?\s*out|timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|socket hang up|fetch failed|network|stream ended without|overload|unavailable|rate.?limit|internal (server )?error|try again|временно|внутренн[а-яё]* ошибк/i;
 /** Gateways report a mangled tool call with a 400; some of them only in their own language. */
 const BAD_TOOL_CALL = /tool[_ ]?call|tool[_ ]?use|invalid json|malformed|вызов инструмента|некорректн/i;
 
@@ -80,8 +80,9 @@ function transient(e: unknown): boolean {
   const msg = err?.message ?? String(e);
   if (status === undefined) return TRANSIENT.test(msg);
   if (status === 408 || status === 409 || status === 429 || status >= 500) return true;
-  if (status === 400) return BAD_TOOL_CALL.test(msg);
-  return false;
+  if (status === 400) return BAD_TOOL_CALL.test(msg) || TRANSIENT.test(msg);
+  // A gateway that reports its own breakage under some other status is still worth another try.
+  return TRANSIENT.test(msg);
 }
 
 /** Exponential with jitter, so several agents retrying at once do not march in step. */

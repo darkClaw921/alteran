@@ -94,6 +94,23 @@ export const SettingsSchema = z
     panels: z.boolean().optional(),
     /** Report the mouse wheel to the TUI so the console scrolls (default: true). */
     mouse: z.boolean().optional(),
+    /** Input line keybindings: `emacs` (default, the line as it always was) or `vi`, with a normal mode. */
+    input: z.object({ mode: z.enum(['emacs', 'vi']).optional() }).optional(),
+    /** Editor for `ctrl+x ctrl+e`; falls back to $VISUAL, $EDITOR, `vi`. */
+    editor: z.string().optional(),
+    /**
+     * Terminal notifications for work that finishes while you are elsewhere. Off by default — a
+     * terminal that beeps unbidden is worse than one that stays quiet.
+     */
+    notify: z
+      .object({
+        mode: z.enum(['off', 'bell', 'osc9']).optional(),
+        /** A turn shorter than this is not worth announcing. */
+        minMs: z.number().int().min(0).optional(),
+      })
+      .optional(),
+    /** How much the interface is allowed to move: `full` (default), `reduced` (no splash), `off`. */
+    motion: z.enum(['full', 'reduced', 'off']).optional(),
     /** Play the gate-dialling animation while the agent starts (default: true). */
     intro: z.boolean().optional(),
     /** TUI palette: dark (default, readable) | contrast | design (mockup colors). */

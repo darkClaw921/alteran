@@ -4,7 +4,7 @@ import type { UiStore } from '../store.js';
 import type { Runtime } from '../../core/runtime.js';
 import { contextBar } from '../../core/context.js';
 import { C, CONTEXT_COLORS, type Color } from '../theme.js';
-import { agentLines, agentsNote } from './AgentsPanel.js';
+import { agentLines, agentRowCount, agentsNote } from './AgentsPanel.js';
 import { Lines } from './Lines.js';
 
 function header(title: string, note: string, width: number, color: Color = C.gold): Line {
@@ -72,7 +72,20 @@ function burnGraph(store: UiStore, width: number, height: number): Line[] {
   return rows;
 }
 
-export function SystemsPanel({ store, rt, width, height }: { store: UiStore; rt: Runtime; width: number; height: number }) {
+export function SystemsPanel({
+  store,
+  rt,
+  width,
+  height,
+  agentSelected = -1,
+}: {
+  store: UiStore;
+  rt: Runtime;
+  width: number;
+  height: number;
+  /** Row the panel focus sits on, or -1 when the panels are not focused. */
+  agentSelected?: number;
+}) {
   const inner = width - 4;
   const tpm = store.tokensPerMinute();
   const rateCap = 120_000;
@@ -92,8 +105,8 @@ export function SystemsPanel({ store, rt, width, height }: { store: UiStore; rt:
   ];
 
   // AGENTS only earns its space once something has been delegated.
-  const agentRows = store.agentTree().length ? Math.max(2, Math.min(6, store.agentTree().length + (height > 44 ? 1 : 0))) : 0;
-  const agents = agentRows ? agentLines(store, inner, agentRows) : [];
+  const agentRows = agentRowCount(store, height);
+  const agents = agentRows ? agentLines(store, inner, agentRows, agentSelected) : [];
 
   const graphHeight = Math.max(4, Math.min(9, height - 34 - (agents.length ? agents.length + 2 : 0)));
   const graph = burnGraph(store, inner, graphHeight);

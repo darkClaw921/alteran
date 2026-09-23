@@ -652,3 +652,35 @@ function isFinalEntry(e: Entry & { v: number }, store: UiStore): boolean {
   if (e.kind === 'splash') return !store.animateSplash || store.entries.some((x) => x.kind === 'user');
   return true;
 }
+
+/** Everything in an entry a person might search for; commands and diffs included, art excluded. */
+export function entryText(e: Entry): string {
+  switch (e.kind) {
+    case 'user':
+    case 'assistant':
+    case 'thinking':
+    case 'notice':
+    case 'info':
+    case 'error':
+    case 'plan':
+    case 'diff':
+      return e.text;
+    case 'tool':
+      return [e.name, e.summary, e.resultText ?? ''].filter(Boolean).join(' ');
+    case 'agent':
+      return [e.label, e.name ?? '', e.detail ?? '', e.summary ?? ''].filter(Boolean).join(' ');
+    default:
+      return '';
+  }
+}
+
+/** Entry indices whose text contains `query`, case-insensitively. Empty query matches nothing. */
+export function searchEntries(entries: readonly Entry[], query: string): number[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+  const hits: number[] = [];
+  entries.forEach((e, i) => {
+    if (entryText(e).toLowerCase().includes(needle)) hits.push(i);
+  });
+  return hits;
+}

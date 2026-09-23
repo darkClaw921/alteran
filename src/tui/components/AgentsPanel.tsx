@@ -14,19 +14,39 @@ function elapsed(row: AgentRow): string {
  * One row per delegated agent, indented by depth so the tree of who launched whom is readable.
  * Running agents show what they are doing right now; finished ones their cost.
  */
-export function agentLines(store: UiStore, width: number, rows: number): Line[] {
+/**
+ * How many agent rows the panel has room for, 0 when nothing was ever delegated. Exported for the
+ * same reason as `scheduleRowCount`: a selection is an index into the drawn rows.
+ */
+export function agentRowCount(store: UiStore, height: number): number {
+  const n = store.agentTree().length;
+  return n ? Math.max(2, Math.min(6, n + (height > 44 ? 1 : 0))) : 0;
+}
+
+/**
+ * The rows the panel actually shows, in display order. Running agents matter most; when the list
+ * outgrows the panel the oldest finished ones drop out. Selecting a row means an index into this
+ * list, so it must be the same function the renderer uses — otherwise `x` would cancel the wrong one.
+ */
+export function agentRows(store: UiStore, rows: number): AgentRow[] {
+  const all = store.agentTree();
+  if (all.length <= rows) return all;
+  return [...all.filter((r) => r.state === 'running'), ...all.filter((r) => r.state !== 'running').slice(-rows)].slice(0, rows);
+}
+
+export function agentLines(store: UiStore, width: number, rows: number, selected = -1): Line[] {
   const all = store.agentTree();
   if (!all.length) return [[seg('(nothing delegated)', C.dim)]];
-  // Running agents matter most; when the list outgrows the panel the oldest finished ones drop out.
-  const shown =
-    all.length <= rows ? all : [...all.filter((r) => r.state === 'running'), ...all.filter((r) => r.state !== 'running').slice(-rows)].slice(0, rows);
-  const out: Line[] = shown.map((r) => {
+  const shown = agentRows(store, rows);
+  const out: Line[] = shown.map((r, i) => {
     const color = COLORS[r.state];
     const indent = '  '.repeat(Math.max(0, r.depth - 1));
     const right = r.state === 'running' ? truncate(r.detail || 'thinking', 18) : `${fmtTokens(r.tokens)} ${elapsed(r)}`;
-    const name = `${indent}${MARKS[r.state]} ${r.name}${r.background ? ' ~' : ''}`;
+    const mark = i === selected ? '*' : MARKS[r.state];
+    const name = `${indent}${mark} ${r.name}${r.background ? ' ~' : ''}`;
     const gap = Math.max(1, width - name.length - right.length);
-    return [seg(name, color), seg(' '.repeat(gap), C.bg), seg(right, r.state === 'running' ? C.muted : C.dim)];
+    // The focused row is bold: the cursor has to be findable without relying on colour alone.
+    return [seg(name, i === selected ? C.gold : color, { bold: i === selected }), seg(' '.repeat(gap), C.bg), seg(right, i === selected ? C.gold : r.state === 'running' ? C.muted : C.dim)];
   });
   if (shown.length < all.length) out.push([seg(`... ${all.length - shown.length} more`, C.dim)]);
   return out;

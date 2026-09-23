@@ -1,7 +1,7 @@
 import { Box } from 'ink';
 import type { CatalogModel, ModelRoute } from '../../providers/catalog.js';
 import { filterModels, fmtContext, fmtMoney, fmtPrice } from '../../providers/catalog.js';
-import { seg, truncate, wrapLine, type Line } from '../lines.js';
+import { lineWidth, seg, textWidth, truncate, wrapLine, type Line } from '../lines.js';
 import { C } from '../theme.js';
 import { Lines } from './Lines.js';
 
@@ -40,7 +40,7 @@ export function ModelPickerView({ state, width, height }: { state: PickerState; 
     return [seg(left + '-'.repeat(Math.max(0, width - left.length - 1)) + '+', C.gold)];
   };
   const row = (line: Line): Line => {
-    const w = line.reduce((s, x) => s + x.text.length, 0);
+    const w = lineWidth(line);
     return [seg('| ', C.gold), ...line, seg(' '.repeat(Math.max(0, inner - w)), C.bg), seg(' |', C.gold)];
   };
   const rule = (): Line => [seg('|', C.gold), seg('-'.repeat(Math.max(0, width - 2)), C.rule), seg('|', C.gold)];
@@ -59,7 +59,7 @@ export function ModelPickerView({ state, width, height }: { state: PickerState; 
         seg('search: ', C.muted),
         seg(state.query, C.text),
         seg('_', C.gold, { bold: true }),
-        seg(' '.repeat(Math.max(1, inner - 9 - state.query.length - count.length)), C.bg),
+        seg(' '.repeat(Math.max(1, inner - 9 - textWidth(state.query) - textWidth(count))), C.bg),
         seg(count, C.dim),
       ]),
     );
@@ -90,12 +90,12 @@ export function ModelPickerView({ state, width, height }: { state: PickerState; 
       const inUse = `${state.provider}:${m.id}` === state.current;
       const price = m.pricing ? `${fmtMoney(m.pricing.in, m.pricing.currency)}/${fmtMoney(m.pricing.out, m.pricing.currency)}` : '';
       const right = `${fmtContext(m.contextWindow).padStart(5)}  ${price.padStart(16)}`;
-      const name = truncate(m.id, Math.max(10, inner - right.length - 5));
+      const name = truncate(m.id, Math.max(10, inner - textWidth(right) - 5));
       lines.push(
         row([
           seg(active ? ' > ' : inUse ? ' * ' : '   ', active ? C.gold : inUse ? C.green : C.dim),
           seg(name, active ? C.text : inUse ? C.green : C.muted, { bold: active }),
-          seg(' '.repeat(Math.max(1, inner - 3 - name.length - right.length)), C.bg),
+          seg(' '.repeat(Math.max(1, inner - 3 - textWidth(name) - textWidth(right))), C.bg),
           seg(right, active ? C.gold : C.dim),
         ]),
       );
@@ -111,13 +111,13 @@ export function ModelPickerView({ state, width, height }: { state: PickerState; 
       const box = rank >= 0 ? `[${rank + 1}]` : '[ ]';
       const price = r.pricing ? `${fmtMoney(r.pricing.in, r.pricing.currency)}/${fmtMoney(r.pricing.out, r.pricing.currency)}` : '';
       const right = `${fmtContext(r.contextWindow).padStart(5)}  ${price.padStart(16)}`;
-      const name = truncate(r.name, Math.max(10, inner - right.length - 9));
+      const name = truncate(r.name, Math.max(10, inner - textWidth(right) - 9));
       lines.push(
         row([
           seg(active ? ' > ' : '   ', C.gold),
           seg(`${box} `, rank >= 0 ? C.green : C.dim),
           seg(name, active ? C.text : rank >= 0 ? C.green : C.muted, { bold: active }),
-          seg(' '.repeat(Math.max(1, inner - 7 - name.length - right.length)), C.bg),
+          seg(' '.repeat(Math.max(1, inner - 7 - textWidth(name) - textWidth(right))), C.bg),
           seg(right, active ? C.gold : C.dim),
         ]),
       );

@@ -3,16 +3,20 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { launch, sleep, until, untilScreen, untilText } from './harness.js';
-import { markdown, wrapLine, seg, truncate, bar, fmtTokens } from '../src/tui/lines.js';
+import { markdown, wrapLine, seg, sliceWidth, textWidth, truncate, truncateLine, lineWidth, bar, fmtTokens } from '../src/tui/lines.js';
 import { gateSize, renderGate } from '../src/tui/gate.js';
 import { applyTheme, C, type ThemeName } from '../src/tui/theme.js';
 import { StageTracker, parseTestOutput } from '../src/tui/stages.js';
 import { projectSlug } from '../src/config/paths.js';
 import { TUNNEL_START, introFrame, playIntro } from '../src/tui/intro.js';
 import { Runtime } from '../src/core/runtime.js';
-import { UiStore } from '../src/tui/store.js';
+import { UiStore, searchEntries, type Entry } from '../src/tui/store.js';
+import { lastAnswers, transcriptMarkdown } from '../src/tui/export.js';
+import { diffHunks } from '../src/tui/render.js';
+import { lineDiff } from '../src/tools/diff.js';
+import { previewWrite } from '../src/tools/fs-tools.js';
 import { agentLines, agentsNote } from '../src/tui/components/AgentsPanel.js';
-import { scheduleLines, scheduleNote } from '../src/tui/components/SchedulePanel.js';
+import { scheduleLines, scheduleNote, scheduleRows } from '../src/tui/components/SchedulePanel.js';
 
 let dir: string;
 let home: string;
@@ -67,6 +71,239 @@ describe('text layout', () => {
     expect(fmtTokens(148_000)).toBe('148k');
     expect(truncate('abcdefghij', 5)).toBe('abcd…');
   });
+
+  /** A CJK glyph takes two cells and an emoji two as well; `.length` counts neither. */
+  it('measures and cuts by display width, not by code units', () => {
+    expect(textWidth('日本語')).toBe(6);
+    expect(textWidth('ab')).toBe(2);
+    expect(sliceWidth('日本語です', 5)).toBe('日本');
+    // Cutting must never split a wide glyph, which would shift the whole row by a cell.
+    expect(textWidth(truncate('日本語です', 5))).toBeLessThanOrEqual(5);
+    expect(textWidth(truncateLine([seg('日本語です')], 4).map((s) => s.text).join(''))).toBe(4);
+  });
+});
+
+describe('transcript search', () => {
+  const entries: Entry[] = [
+    { kind: 'user', text: 'fix the chevron colour', t: 0 },
+    { kind: 'assistant', text: 'Done: the rim is back.', t: 1 },
+    {
+      kind: 'tool',
+      id: 't1',
+      agentId: 'main',
+      name: 'Edit',
+      summary: 'src/gate/chevron.ts',
+      input: {},
+      t: 2,
+      status: 'ok',
+      resultText: 'Updated src/gate/chevron.ts with 3 additions',
+    },
+    { kind: 'notice', level: 'info', text: 'unrelated chatter', t: 3 },
+  ];
+
+  it('matches case-insensitively across the parts of an entry a person sees', () => {
+    expect(searchEntries(entries, 'CHEVRON')).toEqual([0, 2]);
+    // A tool entry is searchable by name, summary and result, not just one of them.
+    expect(searchEntries(entries, 'gate/chevron.ts')).toEqual([2]);
+    expect(searchEntries(entries, 'Edit')).toEqual([2]);
+    expect(searchEntries(entries, 'rim')).toEqual([1]);
+  });
+
+  it('matches nothing for an empty or absent query', () => {
+    expect(searchEntries(entries, '')).toEqual([]);
+    expect(searchEntries(entries, '   ')).toEqual([]);
+    expect(searchEntries(entries, 'nothing here')).toEqual([]);
+  });
+
+  it('does not search the splash art', () => {
+    const splash: Entry[] = [{ kind: 'splash', rows: [['gate', 'chevron']], hints: ['press a key'] }];
+    expect(searchEntries(splash, 'chevron')).toEqual([]);
+  });
+});
+
+describe('input ergonomics', () => {
+  it('takes a pasted paragraph whole instead of submitting its first line', async () => {
+    const { io } = await launch({ cwd: dir, model: 'ollama:test' }, 110, 28);
+    await sleep(700);
+    // A paste is announced by its markers; the newlines inside are text, not Enter presses.
+    io.key('\u001b[200~first line\nsecond line\u001b[201~');
+    await untilScreen(io, 'first line');
+    const screen = io.screen();
+    expect(screen).toContain('second line');
+    io.key('\u0003');
+    await sleep(300);
+    io.key('\u0003');
+    await sleep(300);
+  }, 30000);
+
+  it('keeps vi normal-mode keys out of the text', async () => {
+    fs.writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ input: { mode: 'vi' } }));
+    const { io } = await launch({ cwd: dir, model: 'ollama:test' }, 110, 28);
+    await sleep(700);
+    io.key('hello');
+    await untilScreen(io, 'hello');
+    io.key('\u001b'); // leaves insert mode: the line stays, the cursor steps back
+    await sleep(200);
+    io.key('0'); // to the start
+    await sleep(100);
+    io.clear(); // the buffer accumulates frames; only what comes next speaks for the line
+    io.key('x'); // delete the character under the cursor
+    await sleep(300);
+    const screen = io.screen();
+    expect(screen).toContain('ello');
+    expect(screen).not.toContain('hello');
+    // In normal mode a printable key is a command, so it must not be typed into the line.
+    io.key('ZZ');
+    await sleep(200);
+    expect(io.screen()).not.toContain('elloZZ');
+    io.key('\u0003');
+    await sleep(300);
+    io.key('\u0003');
+    await sleep(300);
+  }, 30000);
+});
+
+describe('panel selection', () => {
+  const items = ['s1', 's2', 's3', 's4'].map((id, i) => ({
+    id,
+    kind: 'prompt' as const,
+    label: `item ${i}`,
+    owner: 'main',
+    ownerName: 'alteran',
+    state: 'waiting' as const,
+    dueAt: Date.now() + 60_000,
+    runs: 0,
+  }));
+
+  it('marks exactly the row the selection points at', () => {
+    // The rows drawn and the rows a selection indexes must be the same list, or `x` cancels a
+    // neighbour: this is the invariant the keyboard depends on.
+    for (const index of [0, 1, 2]) {
+      const marked = scheduleLines(items, 40, 3, index).map((l) => l.map((s) => s.text).join('')).findIndex((t) => t.startsWith('*'));
+      expect(marked).toBe(index);
+      expect(scheduleRows(items, 3)[index].id).toBe(items[index].id);
+    }
+  });
+
+  it('leaves every row unmarked when the panel is not focused', () => {
+    const rows = scheduleLines(items, 40, 3).map((l) => l.map((s) => s.text).join(''));
+    expect(rows.some((t) => t.startsWith('*'))).toBe(false);
+  });
+
+  it('says so when a panel has nothing in it', () => {
+    expect(scheduleLines([], 40, 3).map((l) => l.map((s) => s.text).join(''))).toEqual(['(nothing scheduled)']);
+    expect(scheduleRows(items, 2).map((i) => i.id)).toEqual(['s1', 's2']);
+  });
+});
+
+describe('diff review', () => {
+  it('previews what a write tool would produce, without touching the file', () => {
+    const file = path.join(dir, 'src', 'gate.ts');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'const a = 1;\nconst b = 2;\n');
+
+    expect(previewWrite('Edit', { file_path: 'src/gate.ts', old_string: 'const a = 1;', new_string: 'const a = 9;' }, dir)).toEqual({
+      file,
+      before: 'const a = 1;\nconst b = 2;\n',
+      after: 'const a = 9;\nconst b = 2;\n',
+    });
+    expect(previewWrite('Write', { file_path: 'src/new.ts', content: 'hi\n' }, dir)).toEqual({ file: path.join(dir, 'src', 'new.ts'), before: '', after: 'hi\n' });
+    expect(previewWrite('MultiEdit', { file_path: 'src/gate.ts', edits: [{ old_string: 'a = 1', new_string: 'a = 3' }, { old_string: 'b = 2', new_string: 'b = 4' }] }, dir)?.after).toBe('const a = 3;\nconst b = 4;\n');
+    // Nothing was written by any of that.
+    expect(fs.readFileSync(file, 'utf8')).toBe('const a = 1;\nconst b = 2;\n');
+    // An edit that cannot apply has no diff to show, rather than a misleading one.
+    expect(previewWrite('Edit', { file_path: 'src/gate.ts', old_string: 'not there', new_string: 'x' }, dir)).toBeUndefined();
+    expect(previewWrite('Edit', {}, dir)).toBeUndefined();
+  });
+
+  it('renders a diff with a sign and line number per line, hunks apart', () => {
+    const { lines } = lineDiff('one\ntwo\nthree\n', 'one\nTWO\nthree\n');
+    const out = diffHunks(lines);
+    const text = out.map((l) => l.map((s) => s.text).join('')).join('\n');
+    expect(text).toContain('- two');
+    expect(text).toContain('+ TWO');
+    expect(text).toContain('  one');
+    // Wrapping only happens when a width is given; the dialog wraps its own body.
+    const wrapped = diffHunks(lines, 10);
+    for (const l of wrapped) expect(lineWidth(l)).toBeLessThanOrEqual(10);
+  });
+
+  it('says there is nothing to review before any edit', async () => {
+    const { io } = await launch({ cwd: dir, model: 'ollama:test' }, 110, 28);
+    await sleep(700);
+    io.key('/review');
+    await sleep(200);
+    io.key('\r');
+    await untilText(io, 'No applied edit to review');
+    io.key('\u0003');
+    await sleep(300);
+    io.key('\u0003');
+    await sleep(300);
+  }, 30000);
+});
+
+describe('transcript export', () => {
+  const entries: Entry[] = [
+    { kind: 'user', text: 'fix the parser', t: 0 },
+    { kind: 'thinking', text: 'first check the lexer\nand the tests', t: 1 },
+    { kind: 'tool', id: 't1', agentId: 'main', name: 'Read', summary: 'src/parser.ts', input: {}, t: 2, status: 'ok', durationMs: 1200 },
+    { kind: 'tool', id: 't2', agentId: 'main', name: 'Bash', summary: 'pnpm test', input: {}, t: 3, status: 'error' },
+    { kind: 'assistant', text: 'Fixed: empty sections no longer crash it.', t: 4 },
+    { kind: 'notice', level: 'info', text: 'line one\nline two', t: 5 },
+    { kind: 'assistant', text: 'And the tests pass.', t: 6 },
+  ];
+
+  it('renders each entry by role, keeping tools as a compact list', () => {
+    const md = transcriptMarkdown(entries, { id: 'abc12345-0000-0000-0000-000000000000', model: 'ollama:test' });
+    expect(md).toContain('# alteran session abc12345');
+    expect(md).toContain('ollama:test');
+    expect(md).toContain('## You\n\nfix the parser');
+    expect(md).toContain('## alteran\n\nFixed: empty sections no longer crash it.');
+    expect(md).toContain('- **Read** `src/parser.ts` _(1.2s)_');
+    expect(md).toContain('- **Bash** `pnpm test` ❌');
+    // A multi-line thinking block stays a blockquote rather than escaping into the body.
+    expect(md).toContain('> first check the lexer\n> and the tests');
+    expect(md).toContain('> line one\n> line two');
+  });
+
+  it('leaves no run of blank lines behind', () => {
+    const md = transcriptMarkdown(entries);
+    expect(md).not.toMatch(/\n{3,}/);
+    expect(md.endsWith('\n')).toBe(true);
+  });
+
+  it('copies the last n answers, not the whole transcript', () => {
+    expect(lastAnswers(entries, 1)).toBe('And the tests pass.');
+    expect(lastAnswers(entries, 2)).toBe('Fixed: empty sections no longer crash it.\n\n---\n\nAnd the tests pass.');
+    expect(lastAnswers(entries, 99).split('---').length).toBe(2);
+  });
+
+  it('exports the whole session through /export and copies it through /copy all', async () => {
+    const { io } = await launch({ cwd: dir, model: 'ollama:test' }, 110, 28);
+    await sleep(700);
+    const submit = async (text: string) => {
+      io.key(text);
+      await sleep(200);
+      io.key('\r');
+    };
+    // Without a path it explains itself rather than guessing a filename.
+    await submit('/export');
+    await untilText(io, 'Usage: /export');
+    await submit('/export notes/dump.md');
+    await untilText(io, 'Exported');
+    // The relative path is resolved against the working directory, not the process's own.
+    const written = fs.readFileSync(path.join(dir, 'notes', 'dump.md'), 'utf8');
+    expect(written).toContain('# alteran session');
+    // Everything on screen is in there, including the info line from the attempt before.
+    expect(written).toContain('## info');
+    expect(written).toContain('Usage: /export');
+    await submit('/copy all');
+    await untilText(io, 'Copied');
+    io.key('\u0003');
+    await sleep(300);
+    io.key('\u0003');
+    await sleep(300);
+  }, 30000);
 });
 
 describe('palette contrast', () => {
@@ -411,6 +648,85 @@ describe('terminal UI', () => {
     expect(screen).not.toContain('CONSILIUM');
     io.key('\u0003');
     await sleep(300);
+    io.key('\u0003');
+    await sleep(300);
+  }, 30000);
+
+  it('finds transcript entries by text and walks the matches with ctrl+f', async () => {
+    const sdir = path.join(home, 'sessions', projectSlug(dir));
+    fs.mkdirSync(sdir, { recursive: true });
+    const id = '5ea4ch00-0000-0000-0000-000000000000';
+    fs.writeFileSync(
+      path.join(sdir, `${id}.jsonl`),
+      [
+        JSON.stringify({ type: 'meta', id, cwd: dir, root: dir, model: 'ollama:test', createdAt: new Date().toISOString(), title: 'gate work' }),
+        JSON.stringify({ type: 'message', message: { role: 'user', content: [{ type: 'text', text: 'the chevron colour is wrong' }] } }),
+        JSON.stringify({ type: 'message', message: { role: 'assistant', content: [{ type: 'text', text: 'I fixed the chevron colour and the rim.' }] } }),
+        JSON.stringify({ type: 'message', message: { role: 'user', content: [{ type: 'text', text: 'thanks' }] } }),
+      ].join('\n') + '\n',
+    );
+    const { io } = await launch({ cwd: dir, model: 'ollama:test', resume: '5ea4ch00' }, 120, 30);
+    await sleep(700);
+
+    io.key('\u0006'); // ctrl+f
+    await untilText(io, 'SEARCH');
+    io.key('chevron');
+    // Two entries mention the chevron; the overlay says where we are in the list.
+    await untilText(io, '1/2');
+    const screen = io.screen();
+    expect(screen).toContain('chevron');
+
+    io.key('\u001b[B'); // down arrow: next match
+    await untilText(io, '2/2');
+    // Clear first: the buffer accumulates, so only what is written after this says anything
+    // about what the overlay left behind.
+    io.clear();
+    io.key('\u001b'); // esc closes it and the input area comes back
+    await sleep(300);
+    const after = io.screen();
+    expect(after).not.toContain('next/prev');
+    expect(after).toContain('what should alteran do?');
+
+    io.key('\u0003');
+    await sleep(300);
+    io.key('\u0003');
+    await sleep(300);
+  }, 30000);
+
+  it('focuses the schedule panel and cancels the highlighted row', async () => {
+    withPanels();
+    const { io } = await launch({ cwd: dir, model: 'ollama:test' }, 170, 44);
+    await sleep(700);
+    const submit = async (text: string) => {
+      io.key(text);
+      await sleep(200);
+      io.key('\r');
+    };
+    await submit('/schedule 30m check the build');
+    await untilText(io, 'Scheduled');
+
+    io.clear();
+    io.key('\t'); // focus a panel: SCHEDULE is the only one with something in it
+    await sleep(300);
+    // The focused row is marked, so the cursor is visible before anything happens to it.
+    expect(await untilText(io, '* s1')).toBeTruthy();
+    io.key('x');
+    await untilText(io, 'Cancelled s1');
+    io.key('\u0003');
+    await sleep(300);
+    io.key('\u0003');
+    await sleep(300);
+  }, 30000);
+
+  it('never draws past the right edge of a very narrow terminal', async () => {
+    const { io } = await launch({ cwd: dir, model: 'ollama:test' }, 32, 20);
+    await sleep(700);
+    const screen = io.screen();
+    // The banner is abbreviated this narrow, but the status line and the input box survive.
+    expect(screen).toContain('DEFAULT');
+    expect(screen).toContain('>');
+    // Nothing may be drawn past the edge: the terminal would wrap it onto a line of its own.
+    for (const line of screen.split('\n')) expect(textWidth(line)).toBeLessThanOrEqual(32);
     io.key('\u0003');
     await sleep(300);
   }, 30000);

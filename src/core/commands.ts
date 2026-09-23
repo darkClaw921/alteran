@@ -20,7 +20,7 @@ export type CommandResult =
   | { kind: 'task'; run: (signal: AbortSignal) => Promise<string>; label: string }
   | { kind: 'clear' }
   | { kind: 'exit' }
-  | { kind: 'ui'; action: 'resume' | 'help' | 'diff' | 'tasks' | 'model' | 'copy' | 'bare' | 'context' | 'mouse'; arg?: string };
+  | { kind: 'ui'; action: 'resume' | 'help' | 'diff' | 'tasks' | 'model' | 'copy' | 'export' | 'bare' | 'context' | 'mouse' | 'search' | 'review'; arg?: string };
 
 export interface SlashCommandInfo {
   name: string;
@@ -41,7 +41,8 @@ const BUILTIN: SlashCommandInfo[] = [
   { name: 'iris', description: 'Show permission rules and shield state (alias /permissions)', origin: 'builtin' },
   { name: 'model', description: 'Pick a model: catalog with prices, providers per model', hint: '[model][@provider,provider]', origin: 'builtin' },
   { name: 'models', description: 'List the catalog of a provider with prices', hint: '[provider] [filter]', origin: 'builtin' },
-  { name: 'copy', description: 'Copy the last answer to the clipboard (ctrl+y)', origin: 'builtin' },
+  { name: 'copy', description: 'Copy the last answers or the whole transcript (ctrl+y)', hint: '[n | all]', origin: 'builtin' },
+  { name: 'export', description: 'Write the transcript as markdown', hint: '<path.md>', origin: 'builtin' },
   { name: 'bare', description: 'Toggle the console-only layout for clean mouse selection (ctrl+b)', origin: 'builtin' },
   { name: 'mouse', description: 'Toggle wheel scrolling; off restores drag-select (F7)', origin: 'builtin' },
   { name: 'reasoning', description: 'Reasoning effort: off | low | medium | high', hint: '[level]', origin: 'builtin' },
@@ -59,6 +60,8 @@ const BUILTIN: SlashCommandInfo[] = [
   { name: 'diff', description: 'Show working tree diff', origin: 'builtin' },
   { name: 'attach', description: 'Attach an image file to the next message', hint: '<path>', origin: 'builtin' },
   { name: 'paste', description: 'Attach the image on the clipboard to the next message', origin: 'builtin' },
+  { name: 'search', description: 'Search the transcript (ctrl+f)', hint: '[query]', origin: 'builtin' },
+  { name: 'review', description: 'Show the last edit as a diff and keep or revert it', origin: 'builtin' },
   { name: 'checkpoints', description: 'List the edits this session can undo', origin: 'builtin' },
   { name: 'undo', description: 'Revert the last edit(s) this session made', hint: '[count | all]', origin: 'builtin' },
   { name: 'redo', description: 'Re-apply the last undone edit(s)', hint: '[count | all]', origin: 'builtin' },
@@ -210,6 +213,10 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
       return { kind: 'clear' };
     case 'resume':
       return { kind: 'ui', action: 'resume', arg: args || undefined };
+    case 'search':
+      return { kind: 'ui', action: 'search', arg: args || undefined };
+    case 'review':
+      return { kind: 'ui', action: 'review' };
     case 'diff':
       return { kind: 'ui', action: 'diff' };
     case 'attach':
@@ -222,7 +229,9 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
     case 'context':
       return { kind: 'ui', action: 'context' };
     case 'copy':
-      return { kind: 'ui', action: 'copy' };
+      return { kind: 'ui', action: 'copy', arg: args || undefined };
+    case 'export':
+      return { kind: 'ui', action: 'export', arg: args || undefined };
     case 'bare':
       return { kind: 'ui', action: 'bare' };
     case 'mouse':

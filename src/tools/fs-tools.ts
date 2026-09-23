@@ -129,7 +129,7 @@ interface EditSpec {
   replace_all?: boolean;
 }
 
-function applyEdit(content: string, e: EditSpec): { result: string } | { error: string } {
+export function applyEdit(content: string, e: EditSpec): { result: string } | { error: string } {
   if (e.old_string === e.new_string) return { error: 'old_string and new_string are identical.' };
   if (e.old_string === '') return { error: 'old_string is empty; use Write to create files.' };
   const count = content.split(e.old_string).length - 1;
@@ -138,6 +138,31 @@ function applyEdit(content: string, e: EditSpec): { result: string } | { error: 
   return {
     result: e.replace_all ? content.split(e.old_string).join(e.new_string) : content.replace(e.old_string, () => e.new_string),
   };
+}
+
+/**
+ * What a write tool would produce, applied in memory so a permission prompt can show the change
+ * before it happens. Returns undefined when the tool would not apply cleanly (a missing file, an
+ * `old_string` that does not match) — the dialog must not preview a diff that will never exist.
+ */
+export function previewWrite(tool: string, input: Record<string, unknown>, cwd: string): { file: string; before: string; after: string } | undefined {
+  const raw = input.file_path;
+  if (typeof raw !== 'string') return undefined;
+  const file = path.resolve(cwd, raw);
+  const before = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+  if (tool === 'Write') return { file, before, after: String(input.content ?? '') };
+  const edits: EditSpec[] =
+    tool === 'MultiEdit'
+      ? ((input.edits as EditSpec[] | undefined) ?? [])
+      : [{ old_string: String(input.old_string ?? ''), new_string: String(input.new_string ?? ''), replace_all: input.replace_all === true }];
+  if (!edits.length) return undefined;
+  let content = before;
+  for (const e of edits) {
+    const r = applyEdit(content, e);
+    if ('error' in r) return undefined;
+    content = r.result;
+  }
+  return { file, before, after: content };
 }
 
 async function editFile(ctx: ToolContext, filePath: string, edits: EditSpec[]) {

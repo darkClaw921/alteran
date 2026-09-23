@@ -1,5 +1,5 @@
 import { Box } from 'ink';
-import { seg, truncate, type Line } from '../lines.js';
+import { lineWidth, seg, truncate, type Line } from '../lines.js';
 import { C } from '../theme.js';
 import { Lines } from './Lines.js';
 
@@ -15,7 +15,7 @@ export function HelpPanel({ text, width, height, scroll }: { text: string; width
   const shown = rows.slice(top, top + view);
 
   const row = (line: Line): Line => {
-    const w = line.reduce((s, x) => s + x.text.length, 0);
+    const w = lineWidth(line);
     return [seg('| ', C.gold), ...line, seg(' '.repeat(Math.max(0, inner - w)), C.bg), seg(' |', C.gold)];
   };
   const title = '+-- HELP ';

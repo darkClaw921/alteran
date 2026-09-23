@@ -130,6 +130,11 @@ export class OpenAICompatProvider implements Provider {
     const usage: Usage = emptyUsage();
 
     for await (const chunk of stream) {
+      // A gateway that fails mid-stream answers 200 and puts the reason in a chunk. Without this the
+      // stream just ends and the caller is told "no final message", which hides what actually broke
+      // and denies the retry logic the text it classifies on.
+      const failed = (chunk as { error?: { message?: string; code?: string | number } }).error;
+      if (failed) throw Object.assign(new Error(failed.message ?? 'The provider reported an error mid-stream'), { status: Number(failed.code) || undefined });
       if (chunk.usage) {
         const cached = (chunk.usage as { prompt_tokens_details?: { cached_tokens?: number } }).prompt_tokens_details?.cached_tokens ?? 0;
         const written = (chunk.usage as { prompt_tokens_details?: { cache_write_tokens?: number } }).prompt_tokens_details?.cache_write_tokens ?? 0;

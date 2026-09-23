@@ -13,7 +13,19 @@ function header(title: string, note: string, width: number, color: string = C.go
   return [seg(left, color, { bold: true }), seg('-'.repeat(fill), C.rule), seg(right, C.muted)];
 }
 
-export function GatePanel({ store, width, height }: { store: UiStore; width: number; height: number }) {
+/**
+ * How many schedule rows the left panel has room for. Exported because a selection is an index
+ * into the drawn rows: the keyboard must count them the way the panel does, or `x` cancels the
+ * neighbour of what is highlighted.
+ */
+export function scheduleRowCount(store: UiStore, width: number, height: number): number {
+  const inner = width - 4;
+  const gateHeight = Math.max(9, Math.min(19, height - 26));
+  const gate = gateSize(inner, gateHeight);
+  return Math.max(3, height - gate.height - store.stages.stages.length - 14);
+}
+
+export function GatePanel({ store, width, height, scheduleSelected = -1 }: { store: UiStore; width: number; height: number; scheduleSelected?: number }) {
   const inner = width - 4;
   const st = store.stages;
   const chevrons = st.stages.map((s) => (s.state === 'done' ? 'lit' : s.state === 'active' ? 'active' : s.state === 'failed' ? 'failed' : 'off')) as Array<
@@ -60,11 +72,11 @@ export function GatePanel({ store, width, height }: { store: UiStore; width: num
     : [[seg('REPO    ', C.muted), seg('(not a git repository)', C.muted)]];
 
   const files = git?.files ?? [];
-  const rows = Math.max(3, height - size.height - stageLines.length - 14);
+  const rows = scheduleRowCount(store, width, height);
   // Deferred work owns this slot: it is always visible, so an empty schedule reads as "nothing deferred"
   // rather than as a missing panel. The working tree keeps what is left over, and yields it once work is
   // actually queued.
-  const schedule = scheduleLines(store.scheduled, inner, rows);
+  const schedule = scheduleLines(store.scheduled, inner, rows, scheduleSelected);
   const idle = store.scheduled.length === 0;
   // The tree lives on what the schedule leaves: its own header, the blank line above it, and the
   // "... n more" tail all come out of this budget, or the panel overflows and loses its footer.

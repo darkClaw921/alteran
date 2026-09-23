@@ -1,6 +1,6 @@
 import { Box } from 'ink';
 import type { SessionSummary } from '../../core/session.js';
-import { seg, truncate, type Line } from '../lines.js';
+import { lineWidth, seg, textWidth, truncate, type Line } from '../lines.js';
 import { C } from '../theme.js';
 import { Lines } from './Lines.js';
 
@@ -30,7 +30,7 @@ export function ago(date: Date, now = Date.now()): string {
 export function SessionPickerView({ state, width, height }: { state: SessionPickerState; width: number; height: number }) {
   const inner = width - 4;
   const row = (line: Line): Line => {
-    const w = line.reduce((s, x) => s + x.text.length, 0);
+    const w = lineWidth(line);
     return [seg('| ', C.gold), ...line, seg(' '.repeat(Math.max(0, inner - w)), C.bg), seg(' |', C.gold)];
   };
   const title = '+-- RESUME SESSION ';
@@ -43,7 +43,7 @@ export function SessionPickerView({ state, width, height }: { state: SessionPick
       seg('search: ', C.muted),
       seg(state.query, C.text),
       seg('_', C.gold, { bold: true }),
-      seg(' '.repeat(Math.max(1, inner - 9 - state.query.length - count.length)), C.bg),
+      seg(' '.repeat(Math.max(1, inner - 9 - textWidth(state.query) - textWidth(count))), C.bg),
       seg(count, C.dim),
     ]),
   );
@@ -56,12 +56,12 @@ export function SessionPickerView({ state, width, height }: { state: SessionPick
     const active = idx === state.index;
     const here = s.id === state.current;
     const right = `${String(s.messages).padStart(4)} msg  ${ago(s.updatedAt).padStart(9)}`;
-    const name = truncate(s.title.replace(/\s+/g, ' '), Math.max(10, inner - right.length - 5));
+    const name = truncate(s.title.replace(/\s+/g, ' '), Math.max(10, inner - textWidth(right) - 5));
     lines.push(
       row([
         seg(active ? ' > ' : here ? ' * ' : '   ', active ? C.gold : here ? C.green : C.dim),
         seg(name, active ? C.text : here ? C.green : C.muted, { bold: active }),
-        seg(' '.repeat(Math.max(1, inner - 3 - name.length - right.length)), C.bg),
+        seg(' '.repeat(Math.max(1, inner - 3 - textWidth(name) - textWidth(right))), C.bg),
         seg(right, active ? C.gold : C.dim),
       ]),
     );

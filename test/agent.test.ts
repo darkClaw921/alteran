@@ -10,7 +10,7 @@ import { runSlashCommand } from '../src/core/commands.js';
 import { TrackerStore } from '../src/tracker/store.js';
 import { mainSystemPrompt } from '../src/core/prompt.js';
 import { SessionStore } from '../src/core/session.js';
-import { emptyUsage, type ProviderRequest, type StreamEvent } from '../src/types.js';
+import { emptyUsage, type Provider, type ProviderRequest, type StreamEvent } from '../src/types.js';
 import { runShell } from '../src/tools/bash.js';
 import { ok, type Tool } from '../src/tools/types.js';
 
@@ -475,6 +475,29 @@ describe('provider failures', () => {
     expect(result.state).toBe('done');
     expect(result.report).toContain('found it');
   }, 20000);
+
+  it('retries a gateway that says only that it broke', async () => {
+    const { rt, provider } = await makeRuntime([textTurn('recovered')]);
+    // polza's own wording, and it does not always come with a 5xx.
+    const f = flaky(provider, 1, status(400, 'Произошла внутренняя ошибка. Повторите попытку позже.'));
+    rt.registry.get = () => f;
+    expect(await rt.main.send('go', new AbortController().signal)).toBe('recovered');
+    expect(f.calls()).toBe(2);
+  }, 20000);
+
+  it('carries a mid-stream provider error out instead of reporting an empty stream', async () => {
+    const { rt } = await makeRuntime([]);
+    const broken: Provider = {
+      id: 'broken',
+      async *stream() {
+        yield { type: 'text_delta', text: 'thinking about it' } as StreamEvent;
+        throw Object.assign(new Error('Внутренняя ошибка сервиса'), { status: 500 });
+      },
+    };
+    rt.registry.get = () => broken;
+    // Four attempts, all failing: what reaches the caller is the gateway's words, not ours.
+    await expect(rt.main.send('go', new AbortController().signal)).rejects.toThrow(/Внутренняя ошибка сервиса/);
+  }, 40000);
 
   it('gives up on an error that retrying cannot fix', async () => {
     const { rt, provider } = await makeRuntime([textTurn('never reached')]);
