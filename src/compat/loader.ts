@@ -213,7 +213,10 @@ export class ExtensionLoader {
   }
 
   private addMcp(name: string, cfg: McpServerConfig, origin: Origin, extra: Record<string, string> = {}) {
-    if (cfg.disabled) return;
+    // A server marked `disabled` in its own config still reaches the manager: it is reported as
+    // disabled rather than vanishing, so "configured but switched off" and "never configured" read
+    // differently in `/mcp`. Servers listed in settings.disabledMcpServers are removed outright —
+    // that list is the user's explicit override, and it should hide them entirely.
     if (!cfg.command && !cfg.url) return;
     this.ext.mcpServers.set(name, { name, config: expandServer(cfg, extra), origin });
   }

@@ -18,7 +18,9 @@ const signal = () => new AbortController().signal;
 const spawnReq = (prompt = 'work') => ({ agentType: 'general-purpose', description: 'a task', prompt, signal: signal() });
 
 beforeAll(() => {
-  if (!fs.existsSync('/.dockerenv') && process.env.ALTERAN_SANDBOX !== '1') {
+  // Only a container marker will do. An environment variable was accepted here once, which meant the
+  // guard could be talked out of by the very kind of autonomous run it exists to contain — and was.
+  if (!fs.existsSync('/.dockerenv') && !fs.existsSync('/run/.containerenv')) {
     throw new Error('This suite runs real commands and must run in the sandbox container: pnpm test:sandbox');
   }
 });
@@ -234,5 +236,45 @@ describe('deferred work edges', () => {
     expect(fs.existsSync(stamp)).toBe(false);
     expect(woken).toEqual([]);
     expect(rt.schedule.list()[0].state).toBe('cancelled');
+  });
+});
+
+/**
+ * Compression and permission behaviour that only shows up once real turns have run: a refused
+ * command must stay refused after the history is elided, and a budget must stop a session that is
+ * actually spending. Both are the kind of regression that is silent everywhere else.
+ */
+describe('history trimming and the spend gate', () => {
+  it('refuses a denied command even after the result is elided', async () => {
+    fs.mkdirSync(path.join(dirs.dir, '.alteran'), { recursive: true });
+    fs.writeFileSync(path.join(dirs.dir, '.alteran', 'settings.json'), JSON.stringify({ permissions: { deny: ['Bash(touch:*)'] } }));
+    const { rt, provider } = await makeRuntime(
+      [
+        toolTurn('t1', 'Bash', { command: 'touch should-not-exist.txt' }),
+        toolTurn('t2', 'Bash', { command: 'touch should-not-exist.txt' }),
+        textTurn('told the user'),
+      ],
+      'default',
+    );
+    const stamp = path.join(dirs.dir, 'should-not-exist.txt');
+    await rt.main.send('try it', signal());
+    expect(fs.existsSync(stamp)).toBe(false);
+    // Eliding an old result rewrites what the model read; it must not rewrite what was allowed.
+    rt.main.microcompact();
+    const results = provider.requests.at(-1)!.messages.flatMap((m) => m.content.filter((b) => b.type === 'tool_result'));
+    expect(results.length).toBeGreaterThan(0);
+    expect(fs.existsSync(stamp)).toBe(false);
+    expect(String(results.at(-1)!.content)).toMatch(/denied/i);
+  });
+
+  it('stops the session at its budget instead of billing another request', async () => {
+    fs.mkdirSync(path.join(dirs.dir, '.alteran'), { recursive: true });
+    fs.writeFileSync(path.join(dirs.dir, '.alteran', 'settings.json'), JSON.stringify({ budget: { tokens: 1, onExceed: 'stop' } }));
+    const { rt, provider } = await makeRuntime([textTurn('first'), textTurn('second')]);
+    await rt.main.send('one', signal());
+    const out = await rt.main.send('two', signal());
+    expect(out).toContain('session budget reached');
+    // The limit is checked before the call, so the second request never leaves the machine.
+    expect(provider.requests).toHaveLength(1);
   });
 });

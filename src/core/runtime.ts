@@ -15,6 +15,7 @@ import type { BackgroundShell } from '../tools/bash.js';
 import { killAllShells } from '../tools/bash.js';
 import type { AskQuestions } from '../tools/misc-tools.js';
 import { BUILTIN_TOOLS, MAIN_ONLY_TOOLS, ORCHESTRATION_TOOLS, TOOL_ALIASES } from '../tools/registry.js';
+import { toolSpec } from '../tools/schema.js';
 import type { Tool } from '../tools/types.js';
 import { addUsage, emptyUsage, promptTokens, textOf, type Usage } from '../types.js';
 import { Agent, type AgentHandle } from './agent.js';
@@ -449,6 +450,30 @@ export class Runtime {
     const result = await run.turn;
     if (result.state === 'failed' || result.state === 'stopped') throw new Error(result.report || `Agent ${run.name} ${result.state}`);
     return result;
+  }
+
+  /**
+   * The provider's own count for the next request, when it offers one. Undefined means "estimate
+   * it": a gateway without the endpoint must not be made to look like it has one, and a caller
+   * that gets undefined should say the number is an estimate rather than present a guess as a
+   * measurement.
+   */
+  async exactContextTokens(agent: Agent = this.main): Promise<number | undefined> {
+    const provider = this.registry.get(agent.model.provider);
+    if (!provider.countTokens) return undefined;
+    try {
+      return await provider.countTokens({
+        model: agent.model.model,
+        system: agent.system,
+        messages: agent.messages,
+        tools: this.toolsFor(agent).map(toolSpec),
+        maxTokens: 1,
+        route: this.registry.route(agent.model),
+      });
+    } catch {
+      // Never worth interrupting the user for: the estimate is still there to show.
+      return undefined;
+    }
   }
 
   /** One-off completion without tools (WebFetch extraction, titles). */

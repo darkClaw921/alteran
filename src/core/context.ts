@@ -36,6 +36,17 @@ export interface ContextReport {
 /** Rough token count: ~3.5 characters per token across code and prose. */
 export const estimateTokens = (text: string): number => (text ? Math.ceil(text.length / 3.5) : 0);
 
+/**
+ * What the next request would cost, exactly, when the provider can say so. Asked for on demand
+ * rather than on every render: it is a network call, and `contextBreakdown` stays synchronous for
+ * everything that only needs a rough size.
+ */
+export async function exactContextLine(rt: Runtime, agent: Agent = rt.main): Promise<string> {
+  const exact = await rt.exactContextTokens(agent);
+  if (exact === undefined) return 'Exact prompt tokens: this provider has no token-count endpoint, so only the estimate above is available.';
+  return `Exact prompt tokens for the next request: ${exact.toLocaleString('en-US')} (tools, system and history together).`;
+}
+
 export function contextBreakdown(rt: Runtime, agent: Agent = rt.main): ContextReport {
   const u = agent.usage;
   const sections = systemSections(rt.ext, rt.envInfo(agent.model), rt.promptCaps(agent));

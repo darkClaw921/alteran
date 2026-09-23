@@ -53,8 +53,7 @@
     "format": "biome format --write src test scripts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:sandbox": "docker build -f test/sandbox/Dockerfile -t alteran-sandbox . && docker run --rm --network none alteran-sandbox",
-    "test:sandbox:here": "ALTERAN_SANDBOX=1 vitest run --config vitest.sandbox.config.ts"
+    "test:sandbox": "docker build -f test/sandbox/Dockerfile -t alteran-sandbox . && docker run --rm --network none alteran-sandbox"
   },
   "author": "Igor Gerasimov",
   "license": "MIT",

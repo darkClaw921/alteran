@@ -84,17 +84,37 @@ Phases are epics titled "Phase N: <name>"; tasks of a phase use parent=<epic id>
     name: 'tasks_list',
     category: 'tasks',
     readOnly: true,
-    description: 'List tracker issues. Default: open issues. Filter by status, type, parent epic, or search text.',
+    description: 'List tracker issues. Default: open issues, priority order. Filter by status, type, parent epic, priority, label, assignee or search text; order with sort/reverse.',
     schema: z.object({
       status: z.array(z.string()).optional().describe('e.g. ["open","in_progress"]; omit for all non-closed'),
       type: z.array(z.string()).optional(),
+      priority: z.array(z.number().int()).optional().describe('0-4'),
+      label: z.array(z.string()).optional(),
+      assignee: z.string().optional(),
       parent: z.string().optional().describe('Epic id or phase number'),
       query: z.string().optional(),
       all: z.boolean().optional().describe('Include closed issues'),
+      sort: z.enum(['priority', 'created', 'updated', 'status', 'id', 'title']).optional(),
+      reverse: z.boolean().optional(),
       limit: z.number().int().optional(),
     }),
     summarize: (i: { parent?: string; query?: string }) => i.parent ?? i.query ?? '',
-    run: (input: { status?: string[]; type?: string[]; parent?: string; query?: string; all?: boolean; limit?: number }, ctx) =>
+    run: (
+      input: {
+        status?: string[];
+        type?: string[];
+        priority?: number[];
+        label?: string[];
+        assignee?: string;
+        parent?: string;
+        query?: string;
+        all?: boolean;
+        sort?: 'priority' | 'created' | 'updated' | 'status' | 'id' | 'title';
+        reverse?: boolean;
+        limit?: number;
+      },
+      ctx,
+    ) =>
       guard((c) => {
         const s = store(c);
         const parent = input.parent ? (s.findPhase(input.parent)?.id ?? input.parent) : undefined;

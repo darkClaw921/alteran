@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { Command } from 'commander';
 import { epicLine, issueDetails, issueLine } from './format.js';
 import { paint, section, setColorEnabled } from '../util/color.js';
@@ -144,6 +146,8 @@ export function buildTasksCommand(name = 'tasks'): Command {
     .option('-l, --label <label>', '', collect)
     .option('-a, --assignee <who>')
     .option('--all', 'Include closed issues')
+    .option('--sort <field>', 'priority|created|updated|status|id|title', 'priority')
+    .option('--reverse', 'Reverse the sort order')
     .option('--limit <n>')
     .action((o) =>
       run(() => {
@@ -156,9 +160,49 @@ export function buildTasksCommand(name = 'tasks'): Command {
           label: o.label,
           assignee: o.assignee,
           all: o.all,
+          sort: o.sort,
+          reverse: o.reverse,
           limit: o.limit ? Number(o.limit) : undefined,
         });
         out(g(), list, () => (list.length ? list.map((i) => issueLine(i, true)).join('\n') : 'No issues'));
+      }),
+    );
+
+  cmd
+    .command('export')
+    .description('Write the tracker as JSONL (readable by br, and by `alteran tasks import`)')
+    .option('-o, --out <file>', 'Write to a file instead of stdout')
+    .action((o) =>
+      run(() => {
+        const store = openStore(g());
+        const text = store.exportJsonl();
+        const count = store.all(true).length;
+        if (o.out) {
+          fs.writeFileSync(path.resolve(o.out), text);
+          out(g(), { file: path.resolve(o.out), issues: count }, () => `${paint.green('Exported')} ${count} issues to ${o.out}`);
+          return;
+        }
+        // Unadorned on stdout, so `alteran tasks export > backup.jsonl` round-trips exactly.
+        process.stdout.write(text);
+      }),
+    );
+
+  cmd
+    .command('import')
+    .description('Merge issues from a JSONL file or stdin into the tracker')
+    .argument('[file]', 'File to read; stdin when omitted')
+    .action((file?: string) =>
+      run(() => {
+        const store = openStore(g());
+        const text = file ? fs.readFileSync(path.resolve(file), 'utf8') : fs.readFileSync(0, 'utf8');
+        const result = store.importJsonl(text);
+        out(
+          g(),
+          result,
+          () =>
+            `${paint.green('Imported')} ${result.added} new, ${result.updated} updated` +
+            (result.skipped.length ? `\n${paint.amber('Skipped')} ${result.skipped.length} line(s): ${result.skipped.map((s) => `line ${s.line} (${s.reason})`).join(', ')}` : ''),
+        );
       }),
     );
 

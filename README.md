@@ -170,11 +170,11 @@ Session 9830989d saved — 12 messages.
 
 `/help`, `/plan`, `/create-tasks`, `/run-phase N`, `/schedule`, `/phases`, `/tasks`, `/mode`, `/iris`, `/model`, `/models`, `/context`, `/bare`, `/mouse`, `/reasoning`, `/compact`, `/budget`, `/search`, `/attach`, `/paste`, `/copy`, `/export`, `/review`, `/checkpoints`, `/undo`, `/redo`, `/clear`, `/resume`, `/mcp`, `/skills`, `/agents`, `/plugins`, `/status`, `/init`, `/diff`, `/exit` — плюс все команды и скиллы, найденные в Claude Code, Codex и плагинах.
 
-**Вложения.** Картинку можно приложить прямо в тексте — `@shot.png` — или командами `/attach <path>` и `/paste` (изображение из буфера). Она уходит в модели как `ImageBlock` перед сообщением, а в консоли появляется подтверждение с числом картинок и размером. В headless-режиме работает то же самое через путь в промпте.
+**Вложения.** Картинку можно приложить прямо в тексте — `@shot.png` — или командами `/attach <path>` и `/paste` (изображение из буфера). Она уходит в модели как `ImageBlock` перед сообщением, а в консоли появляется подтверждение с числом картинок и размером. В headless-режиме работает то же самое через путь. PDF передаётся документом там, где провайдер его принимает (Anthropic, Responses API), а шлюз без такой поддержки получает явную пометку вместо base64, который он прочитал бы как текст.
 
 **Откат правок.** Каждая правка (`Write`, `Edit`, `MultiEdit`) оставляет чекпоинт — обе версии файла целиком, поэтому `/undo` возвращает к состоянию до неё, а `/redo` применяет обратно. `/undo all` откатывает всю сессию, `/checkpoints` показывает историю. Новая правка после отката обнуляет ветку redo, как в редакторе. История живёт в файле сессии и переживает `--resume`, отложенные и фоновые правки откатываются наравне с остальными. Файлы больше 2 МБ записываются в историю, но не копируются — `/undo` честно скажет, что не может их вернуть.
 
-CLI: `alteran tasks …`, `alteran models [provider] [фильтр]`, `alteran mcp [list|test]`, `alteran skills|agents|plugins|commands`, `alteran sessions`, `alteran doctor`.
+CLI: `alteran tasks …` (включая `tasks export` / `tasks import` и `tasks list --sort`), `alteran models [provider] [фильтр]`, `alteran mcp [list|test]`, `alteran skills|agents|plugins|commands`, `alteran sessions`, `alteran doctor`.
 
 ## Настройка
 

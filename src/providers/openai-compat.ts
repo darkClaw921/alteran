@@ -20,16 +20,33 @@ export interface OpenAICompatOptions {
   anthropicCaching?: boolean;
 }
 
-function userParts(blocks: ContentBlock[]): ChatCompletionContentPart[] {
+/**
+ * Chat Completions has no document part: a PDF travels as a file part on the Anthropic-native
+ * models behind a gateway, and nowhere else. Rather than base64 that a plain gateway would read as
+ * text, an unsupported document becomes an explicit note — the model can say it could not read the
+ * attachment instead of answering from garbage.
+ */
+function userParts(blocks: ContentBlock[], anthropicCaching = false): ChatCompletionContentPart[] {
   const parts: ChatCompletionContentPart[] = [];
   for (const b of blocks) {
     if (b.type === 'text' && b.text) parts.push({ type: 'text', text: b.text });
     if (b.type === 'image') parts.push({ type: 'image_url', image_url: { url: `data:${b.mediaType};base64,${b.data}` } });
+    if (b.type === 'document') {
+      const label = b.name ? ` "${b.name}"` : '';
+      if (anthropicCaching && b.mediaType === 'application/pdf') {
+        parts.push({
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: b.data },
+        } as unknown as ChatCompletionContentPart);
+      } else {
+        parts.push({ type: 'text', text: `[a document${label} (${b.mediaType}) was attached but this endpoint cannot accept documents]` });
+      }
+    }
   }
   return parts;
 }
 
-export function toChatMessages(system: string, messages: Message[]): ChatCompletionMessageParam[] {
+export function toChatMessages(system: string, messages: Message[], anthropicCaching = false): ChatCompletionMessageParam[] {
   const out: ChatCompletionMessageParam[] = [{ role: 'system', content: system }];
   for (const m of messages) {
     if (m.role === 'assistant') {
@@ -61,9 +78,9 @@ export function toChatMessages(system: string, messages: Message[]): ChatComplet
       if (r.type !== 'tool_result') continue;
       out.push({ role: 'tool', tool_call_id: r.toolUseId, content: (r.isError ? 'ERROR: ' : '') + textOf(r.content) });
       const images = typeof r.content === 'string' ? [] : r.content.filter((c) => c.type === 'image');
-      if (images.length) out.push({ role: 'user', content: userParts(images) });
+      if (images.length) out.push({ role: 'user', content: userParts(images, anthropicCaching) });
     }
-    const parts = userParts(m.content);
+    const parts = userParts(m.content, anthropicCaching);
     if (parts.length) {
       const onlyText = parts.every((p) => p.type === 'text');
       out.push({ role: 'user', content: onlyText ? parts.map((p) => (p as { text: string }).text).join('\n') : parts });
@@ -100,7 +117,7 @@ export class OpenAICompatProvider implements Provider {
       type: 'function',
       function: { name: t.name, description: t.description, parameters: t.inputSchema },
     }));
-    const messages = toChatMessages(req.system, req.messages);
+    const messages = toChatMessages(req.system, req.messages, this.opts.anthropicCaching === true);
     if (this.opts.anthropicCaching && /claude|anthropic/.test(req.model)) markCache(messages, req.cacheTtl);
 
     const body: ChatCompletionCreateParamsStreaming & Record<string, unknown> = {

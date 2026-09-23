@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { launch, sleep } from './harness.js';
+import { launch, sleep, until } from './harness.js';
 import { animatesSplash, motionLevel, wantsIntro } from '../src/tui/motion.js';
 
 describe('motion levels', () => {
@@ -45,7 +45,8 @@ describe('reduced motion in the TUI', () => {
     process.env.ALTERAN_HOME = home;
     fs.writeFileSync(path.join(home, 'settings.json'), JSON.stringify(settings));
     const { io } = await launch({ cwd: dir, model: 'ollama:test' }, 120, 30);
-    await sleep(700);
+    // Poll for the first paint: a fixed sleep races on a loaded runner, where Ink has not drawn yet.
+    await until(() => io.text().includes('A L T E R A N') || undefined);
     return {
       io,
       close: async () => {
