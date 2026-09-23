@@ -44,3 +44,25 @@ export async function launch(opts: TuiOptions, columns = 200, rows = 44) {
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Poll until `probe` returns a value — fixed sleeps race on slow runners, where the first paint
+ * lands much later than on a laptop. Presence assertions must still hold within `timeout`.
+ */
+export async function until<T>(probe: () => T | undefined | false | '', timeout = 10_000, step = 40): Promise<T> {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const value = probe();
+    if (value) return value as T;
+    if (Date.now() >= deadline) throw new Error(`condition still unmet after ${timeout}ms`);
+    await sleep(step);
+  }
+}
+
+/** Wait for `needle` in the last rendered screen (panel layout) and return that screen. */
+export const untilScreen = (io: { screen: () => string }, needle: string, timeout = 10_000) =>
+  until(() => (io.screen().includes(needle) ? io.screen() : undefined), timeout);
+
+/** Wait for `needle` in everything written since the last clear() (inline layout). */
+export const untilText = (io: { text: () => string }, needle: string, timeout = 10_000) =>
+  until(() => (io.text().includes(needle) ? io.text() : undefined), timeout);

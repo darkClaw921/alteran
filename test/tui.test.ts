@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { launch, sleep } from './harness.js';
+import { launch, sleep, until, untilScreen, untilText } from './harness.js';
 import { markdown, wrapLine, seg, truncate, bar, fmtTokens } from '../src/tui/lines.js';
 import { gateSize, renderGate } from '../src/tui/gate.js';
 import { applyTheme, C, type ThemeName } from '../src/tui/theme.js';
@@ -461,21 +461,16 @@ describe('terminal UI', () => {
     io.key('/resume');
     await sleep(300);
     io.key('\r');
-    await sleep(500);
-    let screen = io.screen();
-    expect(screen).toContain('RESUME SESSION');
+    let screen = await untilScreen(io, 'RESUME SESSION');
     expect(screen).toContain('parser fix');
     expect(screen).toContain('webhook support');
 
     // Filter down to the second session, then resume it.
     io.key('webhook');
-    await sleep(300);
-    expect(io.screen()).toContain('1/2 sessions');
+    await untilScreen(io, '1/2 sessions');
     io.clear();
     io.key('\r');
-    await sleep(600);
-    screen = io.text();
-    expect(screen).toContain('Resumed session 22222222');
+    screen = await untilText(io, 'Resumed session 22222222');
     expect(screen).toContain('webhook support #2');
     expect(screen).not.toContain('RESUME SESSION');
     io.key('\u0003');
@@ -483,7 +478,7 @@ describe('terminal UI', () => {
     io.key('\u0003');
     await done;
     // Leaving prints the exact command that returns to the session just continued.
-    expect(io.screen()).toContain('alteran --resume 22222222');
+    await untilScreen(io, 'alteran --resume 22222222');
   }, 30000);
 
   it('toggles help as an overlay instead of pushing it into the transcript', async () => {
@@ -493,20 +488,16 @@ describe('terminal UI', () => {
     expect(before).not.toContain('-- HELP');
     io.clear();
     io.key('?');
-    await sleep(400);
-    let screen = io.text();
-    expect(screen).toContain('-- HELP');
+    let screen = await untilText(io, '-- HELP');
     expect(screen).toContain('/run-phase');
     io.clear();
     io.key('\u001b[B');
-    await sleep(300);
-    expect(io.text()).toContain('2-');
+    await untilText(io, '2-');
     io.clear();
     io.key('?');
-    await sleep(400);
-    screen = io.text();
+    // The input area comes back once the overlay is gone, so wait for it before asserting absence.
+    screen = await untilText(io, '? shortcuts');
     expect(screen).not.toContain('-- HELP');
-    expect(screen).toContain('? shortcuts');
     io.key('\u0003');
     io.key('\u0003');
     await sleep(300);
@@ -516,9 +507,8 @@ describe('terminal UI', () => {
     const { io } = await launch({ cwd: dir, model: 'ollama:test' }, 100, 24);
     await sleep(900);
     io.clear();
-    await sleep(700);
     // The start screen moves: there is nothing above it to scroll away from yet.
-    expect(io.text()).not.toBe('');
+    await until(() => io.text() !== '');
 
     io.key('/mode default');
     await sleep(150);
@@ -565,24 +555,20 @@ describe('terminal UI', () => {
     });
 
     const { io } = await launch({ cwd: dir, model: 'polza:deepseek/deepseek-v4.1-flash', mode: 'acceptEdits' }, 200, 44);
-    await sleep(500);
-    expect(io.screen()).toContain('KEY 199.09/200.00₽');
+    await untilScreen(io, 'KEY 199.09/200.00₽');
 
     io.key('/model');
     await sleep(200);
     io.key('\r');
-    await sleep(600);
-    let screen = io.screen();
-    expect(screen).toContain('MODEL / polza');
+    let screen = await untilScreen(io, 'MODEL / polza');
     expect(screen).toContain('deepseek/deepseek-v4.1-flash');
     expect(screen).toContain('13.21₽/39.64₽');
 
     // Right opens the providers pane with per-provider prices; Enter pins the highlighted one.
     io.key('\u001b[C');
-    await sleep(500);
-    screen = io.screen();
+    // The pane opens before its provider list arrives, so wait for a row, not for the header.
+    screen = await untilScreen(io, 'morph/fp8');
     expect(screen).toContain('PROVIDERS / deepseek/deepseek-v4.1-flash');
-    expect(screen).toContain('morph/fp8');
     // Tick two providers: the order they are ticked in becomes the fallback order.
     io.key('\u001b[B');
     await sleep(200);
@@ -591,9 +577,7 @@ describe('terminal UI', () => {
     io.key('\u001b[A');
     await sleep(200);
     io.key(' ');
-    await sleep(200);
-    screen = io.screen();
-    expect(screen).toContain('order: morph/fp8 > deepseek');
+    screen = await untilScreen(io, 'order: morph/fp8 > deepseek');
     expect(screen).toContain('[1] morph/fp8');
     expect(screen).toContain('[2] deepseek');
     io.key('\r');
