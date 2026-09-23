@@ -37,6 +37,10 @@
     "dist",
     "assets"
   ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "engines": {
     "node": ">=22.5"
   },

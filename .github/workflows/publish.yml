@@ -1,0 +1,55 @@
+name: publish
+
+# Публикация в npm через Trusted Publisher: пакет подписывается OIDC-токеном
+# самого GitHub Actions, токен npm в секретах не нужен и не хранится.
+# Запускается при пуше тега `v*`; ручной запуск — для повторной публикации.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # OIDC-токен, которым npm подтверждает, что публикует именно этот workflow.
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          # Кэш в релизной сборке не используем — npm явно это рекомендует.
+          package-manager-cache: false
+
+      # Trusted publishing требует npm 11.5.1+; в образе может быть версия постарше.
+      - name: Обновить npm
+        run: npm install --global npm@^11
+
+      - run: pnpm install --frozen-lockfile
+
+      # Тег и версия в package.json должны совпадать, иначе в реестр уедет не то.
+      - name: Сверить тег с версией пакета
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "Тег $GITHUB_REF_NAME не совпадает с версией package.json ($pkg)" >&2
+            exit 1
+          fi
+
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+      - name: Опубликовать
+        run: npm publish --access public
