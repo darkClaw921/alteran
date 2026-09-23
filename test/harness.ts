@@ -38,7 +38,12 @@ export function makeIo(columns = 200, rows = 44) {
 
 export async function launch(opts: TuiOptions, columns = 200, rows = 44) {
   const io = makeIo(columns, rows);
-  const done = startTui({ ...opts, mcp: false }, { stdin: io.stdin as NodeJS.ReadStream, stdout: io.stdout as NodeJS.WriteStream });
+  // `interactive: true` matters on CI: Ink otherwise treats the run as non-interactive and holds
+  // every frame back until unmount, so the fake terminal stays empty for the whole test.
+  const done = startTui(
+    { ...opts, mcp: false },
+    { stdin: io.stdin as NodeJS.ReadStream, stdout: io.stdout as NodeJS.WriteStream, interactive: true },
+  );
   await new Promise((r) => setTimeout(r, 400));
   return { io, done };
 }

@@ -979,6 +979,12 @@ function helpText(rt: Runtime): string {
 export interface TuiIo {
   stdin: NodeJS.ReadStream;
   stdout: NodeJS.WriteStream;
+  /**
+   * Force Ink's interactive mode. Ink treats CI as non-interactive even on a TTY and then writes
+   * only the final frame at unmount, so tests driving the fake terminal see nothing until exit.
+   * Left unset outside tests: a real run piped into a log should stay non-interactive.
+   */
+  interactive?: boolean;
 }
 
 export async function startTui(opts: TuiOptions, io?: TuiIo): Promise<void> {
@@ -1188,7 +1194,7 @@ export async function startTui(opts: TuiOptions, io?: TuiIo): Promise<void> {
         exitOnCtrlC: false,
         alternateScreen: !io && !inline,
         incrementalRendering: !io,
-        ...(io ? { stdin: io.stdin, stdout: io.stdout, patchConsole: false } : {}),
+        ...(io ? { stdin: io.stdin, stdout: io.stdout, patchConsole: false, ...(io.interactive == null ? {} : { interactive: io.interactive }) } : {}),
       },
     );
     instanceRef.current = () => instance.unmount();
