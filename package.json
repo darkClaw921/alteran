@@ -2,6 +2,32 @@
   "name": "alteran",
   "version": "0.1.0",
   "description": "alteran — coding agent terminal with a built-in phased task tracker",
+  "keywords": [
+    "ai-agent",
+    "coding-agent",
+    "agentic",
+    "cli",
+    "terminal",
+    "tui",
+    "ink",
+    "task-tracker",
+    "issue-tracker",
+    "beads",
+    "mcp",
+    "anthropic",
+    "claude",
+    "openai",
+    "openrouter",
+    "llm"
+  ],
+  "homepage": "https://github.com/darkClaw921/alteran#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/darkClaw921/alteran.git"
+  },
+  "bugs": {
+    "url": "https://github.com/darkClaw921/alteran/issues"
+  },
   "type": "module",
   "bin": {
     "alteran": "dist/cli.js",
@@ -21,6 +47,7 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "author": "Igor Gerasimov",
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
