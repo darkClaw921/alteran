@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box } from 'ink';
 import type { SessionSummary } from '../../core/session.js';
 import { seg, truncate, type Line } from '../lines.js';
@@ -74,7 +73,11 @@ export function SessionPickerView({ state, width, height }: { state: SessionPick
   lines.push(
     row(
       picked
-        ? [seg(picked.id, C.bronze), seg(`   ${picked.updatedAt.toISOString().slice(0, 16).replace('T', ' ')}`, C.muted), seg(picked.id === state.current ? '   (current)' : '', C.green)]
+        ? [
+            seg(picked.id, C.bronze),
+            seg(`   ${picked.updatedAt.toISOString().slice(0, 16).replace('T', ' ')}`, C.muted),
+            seg(picked.id === state.current ? '   (current)' : '', C.green),
+          ]
         : [seg('', C.bg)],
     ),
   );

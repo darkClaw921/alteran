@@ -36,7 +36,11 @@ function looseParse(yaml: string): Record<string, string> {
 
 export function toList(v: unknown): string[] | undefined {
   if (v == null || v === '') return undefined;
-  if (Array.isArray(v)) return v.map(String).map((s) => s.trim()).filter(Boolean);
+  if (Array.isArray(v))
+    return v
+      .map(String)
+      .map((s) => s.trim())
+      .filter(Boolean);
   return String(v)
     .split(',')
     .map((s) => s.trim())

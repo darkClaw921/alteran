@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { z } from 'zod';
 import { parseFrontmatter } from '../compat/frontmatter.js';
+import type { AgentResult, AgentRun } from '../core/agents.js';
 import { fail, ok, type Tool } from './types.js';
 import { toolJsonSchema } from './schema.js';
 
@@ -8,10 +9,7 @@ const taskSchema = z.object({
   description: z.string().describe('Short (3-5 word) description of the task'),
   prompt: z.string().describe('Complete, self-contained task for the agent'),
   subagent_type: z.string().optional().describe('Agent type to use (default: general-purpose)'),
-  background: z
-    .boolean()
-    .optional()
-    .describe('Run without blocking: the call returns at once and the report arrives later as a notification'),
+  background: z.boolean().optional().describe('Run without blocking: the call returns at once and the report arrives later as a notification'),
 });
 
 export const TaskTool: Tool<z.infer<typeof taskSchema>> = {
@@ -35,7 +33,7 @@ The agent stays addressable after it reports: continue it with SendMessage inste
       signal: ctx.signal,
       background: input.background,
     };
-    let run;
+    let run: AgentRun;
     try {
       run = ctx.runtime.agents.spawn(req);
     } catch (e) {
@@ -95,16 +93,19 @@ A finished agent runs the message and its reply comes back here. A still-running
   schema: sendSchema,
   summarize: (i) => i.to,
   async run(input, ctx) {
-    let res;
+    let res: AgentResult | 'queued';
     try {
       res = await ctx.runtime.agents.deliver(input.to, input.message, ctx.signal);
     } catch (e) {
       return fail((e as Error).message);
     }
     if (res === 'queued') {
-      return ok(`Agent "${input.to}" is still working; the message was delivered as guidance and will reach it on its next step. Its answer comes with its report.`, {
-        summary: 'Queued',
-      });
+      return ok(
+        `Agent "${input.to}" is still working; the message was delivered as guidance and will reach it on its next step. Its answer comes with its report.`,
+        {
+          summary: 'Queued',
+        },
+      );
     }
     if (res.state === 'stopped') return fail(`Agent ${input.to} was stopped: ${res.report || 'interrupted'}`);
     if (res.state === 'failed') return fail(`Agent ${input.to} failed: ${res.report}`);
@@ -237,7 +238,10 @@ Loaded tools become callable from the next step.`,
     const deferred = ctx.runtime.allTools().filter((t) => t.deferred);
     let found: Tool<any>[];
     if (input.query.startsWith('select:')) {
-      const names = input.query.slice(7).split(',').map((s) => s.trim());
+      const names = input.query
+        .slice(7)
+        .split(',')
+        .map((s) => s.trim());
       found = deferred.filter((t) => names.includes(t.name));
     } else {
       const words = input.query.toLowerCase().split(/\s+/).filter(Boolean);

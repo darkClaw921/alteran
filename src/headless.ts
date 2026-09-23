@@ -22,7 +22,14 @@ const dim = (s: string) => (process.stderr.isTTY ? `\x1b[2m${s}\x1b[0m` : s);
 const err = (s: string) => (process.stderr.isTTY ? paint.red(s) : s);
 
 export async function runHeadless(opts: HeadlessOptions): Promise<number> {
-  const rt = await Runtime.create({ cwd: opts.cwd, model: opts.model, mode: opts.mode, reasoning: opts.reasoning, resume: opts.resume, noMcp: opts.mcp === false });
+  const rt = await Runtime.create({
+    cwd: opts.cwd,
+    model: opts.model,
+    mode: opts.mode,
+    reasoning: opts.reasoning,
+    resume: opts.resume,
+    noMcp: opts.mcp === false,
+  });
   for (const e of rt.settingsErrors) process.stderr.write(`settings: ${e}\n`);
   if (opts.mcp !== false && rt.mcp.servers.size) {
     await Promise.race([rt.connectMcp(), new Promise((r) => setTimeout(r, 15_000))]);

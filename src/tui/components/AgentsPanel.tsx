@@ -18,7 +18,8 @@ export function agentLines(store: UiStore, width: number, rows: number): Line[] 
   const all = store.agentTree();
   if (!all.length) return [[seg('(nothing delegated)', C.dim)]];
   // Running agents matter most; when the list outgrows the panel the oldest finished ones drop out.
-  const shown = all.length <= rows ? all : [...all.filter((r) => r.state === 'running'), ...all.filter((r) => r.state !== 'running').slice(-rows)].slice(0, rows);
+  const shown =
+    all.length <= rows ? all : [...all.filter((r) => r.state === 'running'), ...all.filter((r) => r.state !== 'running').slice(-rows)].slice(0, rows);
   const out: Line[] = shown.map((r) => {
     const color = COLORS[r.state];
     const indent = '  '.repeat(Math.max(0, r.depth - 1));

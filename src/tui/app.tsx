@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type React from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, render, useApp, useInput, useStdin, useStdout, useWindowSize } from 'ink';
 import fg from 'fast-glob';
 import { InterruptedError } from '../core/agent.js';
@@ -74,10 +75,7 @@ function TopBar({ store, rt, width }: { store: UiStore; rt: Runtime; width: numb
   const ctx = Math.round((store.contextTokens / store.contextWindow) * 100);
   const porta = store.awaiting ? 'ASTRIA PORTA: IRIS HOLD' : store.running ? 'ASTRIA PORTA: OPEN' : 'ASTRIA PORTA: DORMANT';
   const portaColor = store.awaiting ? C.amber : store.running ? C.cyan : C.muted;
-  const left: Line = [
-    seg('[ A L T E R A N ]', C.gold, { bold: true }),
-    seg(`  == ANCIENT GATE NETWORK // AGENT TERMINAL -- alteran v${VERSION} ==`, C.muted),
-  ];
+  const left: Line = [seg('[ A L T E R A N ]', C.gold, { bold: true }), seg(`  == ANCIENT GATE NETWORK // AGENT TERMINAL -- alteran v${VERSION} ==`, C.muted)];
   const right: Line = [
     seg(porta, portaColor),
     seg(' | ', C.dim),
@@ -185,9 +183,11 @@ interface AppProps {
 function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, initialPrompt, pickResume }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const stdin = useStdin() as unknown as { internal_eventEmitter?: { on(e: string, fn: (s: string) => void): void; off(e: string, fn: (s: string) => void): void } };
+  const stdin = useStdin() as unknown as {
+    internal_eventEmitter?: { on(e: string, fn: (s: string) => void): void; off(e: string, fn: (s: string) => void): void };
+  };
   const size = useWindowSize();
-  const [, force] = useState(0);
+  const [renders, force] = useState(0);
   const [input, setInput] = useState('');
   const [cursor, setCursor] = useState(0);
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -226,6 +226,19 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
     };
   }, [store]);
   const animateRef = useRef(true);
+  useEffect(() => {
+    // A development React writes a performance mark and measure per update, and Node's timeline
+    // never drops them — long sessions died of heap exhaustion. The CLI runs React in production
+    // mode for this reason; this keeps a dev run (or an embedder that sets NODE_ENV itself) alive
+    // too. Nothing here reads the user timing, so dropping it costs nothing.
+    if (process.env.NODE_ENV === 'production') return;
+    const sweep = setInterval(() => {
+      performance.clearMarks();
+      performance.clearMeasures();
+    }, 5000);
+    sweep.unref?.();
+    return () => clearInterval(sweep);
+  }, []);
   useEffect(() => {
     const t = setInterval(() => {
       store.tick++;
@@ -398,8 +411,17 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
       setPicker(base);
       try {
         const models = await rt.catalog.models(provider, refresh);
-        const index = Math.max(0, models.findIndex((m) => m.id === rt.model.model));
-        setPicker({ ...base, models, index, loading: undefined, pinned: rt.registry.route({ ...rt.model, provider, model: models[index]?.id ?? '', id: `${provider}:${models[index]?.id ?? ''}` }) });
+        const index = Math.max(
+          0,
+          models.findIndex((m) => m.id === rt.model.model),
+        );
+        setPicker({
+          ...base,
+          models,
+          index,
+          loading: undefined,
+          pinned: rt.registry.route({ ...rt.model, provider, model: models[index]?.id ?? '', id: `${provider}:${models[index]?.id ?? ''}` }),
+        });
       } catch (e) {
         setPicker({ ...base, loading: undefined, error: `Catalog unavailable: ${(e as Error).message}` });
       }
@@ -417,7 +439,10 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
       setPicker({ ...state, pane: 'routes', routes: [], routeIndex: 0, pinned, chosen: pinned ?? [], loading: `Loading providers for ${model.id}…` });
       try {
         const routes = await rt.catalog.routes(state.provider, model.id);
-        const routeIndex = Math.max(0, routes.findIndex((r) => r.name === pinned?.[0]));
+        const routeIndex = Math.max(
+          0,
+          routes.findIndex((r) => r.name === pinned?.[0]),
+        );
         setPicker((p) => (p ? { ...p, routes, routeIndex, loading: undefined } : p));
       } catch (e) {
         setPicker((p) => (p ? { ...p, loading: undefined, error: (e as Error).message } : p));
@@ -449,7 +474,9 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
 
   /** Copy the last assistant answer (or the last console entry) to the clipboard. */
   const copyLast = useCallback(() => {
-    const entry = [...store.entries].reverse().find((e) => e.kind === 'assistant' || e.kind === 'info' || e.kind === 'plan' || e.kind === 'diff' || e.kind === 'error');
+    const entry = [...store.entries]
+      .reverse()
+      .find((e) => e.kind === 'assistant' || e.kind === 'info' || e.kind === 'plan' || e.kind === 'diff' || e.kind === 'error');
     const text = entry && 'text' in entry ? entry.text : '';
     if (!text.trim()) {
       pushInfo('Nothing to copy yet.');
@@ -549,7 +576,13 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
     if (at) {
       if (!filesRef.current) {
         filesRef.current = [];
-        fg('**/*', { cwd: rt.cwd, ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/target/**'], onlyFiles: true, dot: false, suppressErrors: true })
+        fg('**/*', {
+          cwd: rt.cwd,
+          ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/target/**'],
+          onlyFiles: true,
+          dot: false,
+          suppressErrors: true,
+        })
           .then((f) => {
             filesRef.current = f.slice(0, 20000);
             force((n) => n + 1);
@@ -563,7 +596,11 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
         .map((f) => ({ value: f, label: f, hint: '' }));
     }
     return [];
-  }, [input, cursor, rt]);
+    // `renders` is here so the list appears when the file scan finishes: Ink batches a fast burst of
+    // keystrokes into one update, so without it the scan starts, resolves into `filesRef` and nothing
+    // ever recomputes — the `@` menu stays empty until the next keypress. The body returns early
+    // unless a mention is actually open, so the extra runs cost nothing.
+  }, [input, cursor, rt, renders]);
 
   useEffect(() => setSuggestIdx(0), [input]);
 
@@ -782,14 +819,21 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
       return;
     }
 
-    if (process.env.ALTERAN_DEBUG_KEYS) process.stderr.write(`KEY ${JSON.stringify(ch)} ${JSON.stringify(Object.keys(key).filter(k=>(key as any)[k]===true))} input=${JSON.stringify(input)} sugg=${suggestions.length}\n`);
+    if (process.env.ALTERAN_DEBUG_KEYS)
+      process.stderr.write(
+        `KEY ${JSON.stringify(ch)} ${JSON.stringify(Object.keys(key).filter((k) => (key as any)[k] === true))} input=${JSON.stringify(input)} sugg=${suggestions.length}\n`,
+      );
     if (suggestions.length) {
       if (key.upArrow) return setSuggestIdx((i) => (i - 1 + suggestions.length) % suggestions.length);
       if (key.downArrow) return setSuggestIdx((i) => (i + 1) % suggestions.length);
       const sel = suggestions[suggestIdx];
       const isSlashPrefix = input.trim().startsWith('/') && !input.includes(' ');
+      // While an `@` mention is open, Enter picks the highlighted file; submitting mid-path would
+      // send a half-typed name and lose the pick. Accepting appends a space, which closes the list,
+      // so the next Enter submits as usual.
+      const atMention = /(^|\s)@[^\s]*$/.test(input.slice(0, cursor));
       const exact = isSlashPrefix && sel && sel.value.trim() === input.trim();
-      if (sel && (key.tab || (key.return && isSlashPrefix && !exact))) {
+      if (sel && (key.tab || (key.return && (isSlashPrefix || atMention) && !exact))) {
         applySuggestion(sel);
         return;
       }
@@ -873,12 +917,12 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
   const inputAreaHeight = sessionPicker
     ? sessionHeight
     : help !== null
-    ? helpHeight
-    : picker
-    ? pickerHeight
-    : dialog
-      ? Math.min(14, 6 + dialog.options.length + dialog.body.length)
-      : 3 + Math.min(7, input.split('\n').length - 1) + (queue.length ? 1 : 0);
+      ? helpHeight
+      : picker
+        ? pickerHeight
+        : dialog
+          ? Math.min(14, 6 + dialog.options.length + dialog.body.length)
+          : 3 + Math.min(7, input.split('\n').length - 1) + (queue.length ? 1 : 0);
   const suggestionHeight = suggestions.length && !dialog && !picker && !sessionPicker && help === null ? suggestions.length : 0;
 
   const overlay = sessionPicker ? (
@@ -900,7 +944,9 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
         width={consoleWidth}
         queued={queue.length}
         mode={rt.mode}
-        placeholder={exitArmed ? 'press ctrl+c again to exit' : store.running ? 'type to queue a follow-up…' : 'what should alteran do? (/ for commands, @ for files)'}
+        placeholder={
+          exitArmed ? 'press ctrl+c again to exit' : store.running ? 'type to queue a follow-up…' : 'what should alteran do? (/ for commands, @ for files)'
+        }
       />
       <Lines
         lines={[
@@ -967,7 +1013,8 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
 function detectTestCommand(cwd: string): string | undefined {
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'));
-    if (pkg.scripts?.test) return fs.existsSync(path.join(cwd, 'pnpm-lock.yaml')) ? 'pnpm test' : fs.existsSync(path.join(cwd, 'yarn.lock')) ? 'yarn test' : 'npm test';
+    if (pkg.scripts?.test)
+      return fs.existsSync(path.join(cwd, 'pnpm-lock.yaml')) ? 'pnpm test' : fs.existsSync(path.join(cwd, 'yarn.lock')) ? 'yarn test' : 'npm test';
   } catch {}
   if (fs.existsSync(path.join(cwd, 'Cargo.toml'))) return 'cargo test';
   if (fs.existsSync(path.join(cwd, 'go.mod'))) return 'go test ./...';
@@ -979,7 +1026,8 @@ function helpText(rt: Runtime): string {
   const cmds = listSlashCommands(rt);
   const builtin = cmds.filter((c) => c.origin === 'builtin');
   const custom = cmds.filter((c) => c.origin !== 'builtin');
-  const fmt = (c: { name: string; hint?: string; description: string }) => `  /${(c.name + (c.hint ? ' ' + c.hint : '')).padEnd(34)} ${c.description.slice(0, 70)}`;
+  const fmt = (c: { name: string; hint?: string; description: string }) =>
+    `  /${(c.name + (c.hint ? ' ' + c.hint : '')).padEnd(34)} ${c.description.slice(0, 70)}`;
   return [
     'Commands:',
     ...builtin.map(fmt),
@@ -1030,7 +1078,11 @@ export async function startTui(opts: TuiOptions, io?: TuiIo): Promise<void> {
     return next;
   };
 
-  const ask = <T,>(make: (resolve: (value: string, text?: string) => void) => DialogState, map: (value: string, text?: string) => T, signal?: AbortSignal): Promise<T> =>
+  const ask = <T,>(
+    make: (resolve: (value: string, text?: string) => void) => DialogState,
+    map: (value: string, text?: string) => T,
+    signal?: AbortSignal,
+  ): Promise<T> =>
     serialize(
       () =>
         new Promise<T>((resolve, reject) => {
@@ -1093,11 +1145,14 @@ export async function startTui(opts: TuiOptions, io?: TuiIo): Promise<void> {
             (resolve) => ({
               title: q.header ? `QUESTION — ${q.header.toUpperCase()}` : 'QUESTION',
               body: [[seg(q.question, C.text)]],
-              options: [...q.options.map((o) => ({ value: o.label, label: o.label, hint: o.description })), { value: '__text__', label: 'Other (type your own)' }],
+              options: [
+                ...q.options.map((o) => ({ value: o.label, label: o.label, hint: o.description })),
+                { value: '__text__', label: 'Other (type your own)' },
+              ],
               selected: 0,
               resolve,
             }),
-            (value, text) => (value === '__text__' || value === '__escape__' ? text ?? '(no answer)' : value),
+            (value, text) => (value === '__text__' || value === '__escape__' ? (text ?? '(no answer)') : value),
             signal,
           );
         }

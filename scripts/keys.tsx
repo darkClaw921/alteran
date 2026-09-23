@@ -1,11 +1,17 @@
-import React from 'react';
 import { render, Text, useInput } from 'ink';
 import { makeIo, sleep } from '../test/harness.js';
 
 const seen: string[] = [];
 function T() {
   useInput((ch, key) => {
-    seen.push(JSON.stringify({ ch, keys: Object.entries(key).filter(([, v]) => v === true).map(([k]) => k) }));
+    seen.push(
+      JSON.stringify({
+        ch,
+        keys: Object.entries(key)
+          .filter(([, v]) => v === true)
+          .map(([k]) => k),
+      }),
+    );
   });
   return <Text>x</Text>;
 }

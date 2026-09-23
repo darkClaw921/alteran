@@ -351,9 +351,7 @@ export class TrackerStore {
     for (const i of issues) resolve(i.id);
     for (const i of issues) {
       if (i.issue_type !== 'epic') continue;
-      const open = issues.filter(
-        (c) => !isClosedStatus(c.status) && c.dependencies?.some((d) => d.type === 'parent-child' && d.depends_on_id === i.id),
-      );
+      const open = issues.filter((c) => !isClosedStatus(c.status) && c.dependencies?.some((d) => d.type === 'parent-child' && d.depends_on_id === i.id));
       if (open.length) {
         const info = result.get(i.id)!;
         info.blocked = true;
@@ -368,11 +366,7 @@ export class TrackerStore {
     const now = Date.now();
     const parentId = opts.parent ? this.resolveId(opts.parent) : undefined;
     let list = this.all().filter(
-      (i) =>
-        i.status === 'open' &&
-        !info.get(i.id)?.blocked &&
-        !(i.defer_until && Date.parse(i.defer_until) > now) &&
-        !i.is_template,
+      (i) => i.status === 'open' && !info.get(i.id)?.blocked && !(i.defer_until && Date.parse(i.defer_until) > now) && !i.is_template,
     );
     if (opts.type?.length) list = list.filter((i) => opts.type!.includes(i.issue_type));
     if (opts.priority?.length) list = list.filter((i) => opts.priority!.includes(i.priority));
@@ -407,9 +401,7 @@ export class TrackerStore {
     }
     if (f.query) {
       const q = f.query.toLowerCase();
-      list = list.filter((i) =>
-        [i.id, i.title, i.description, i.notes, i.design, i.acceptance_criteria].some((s) => s?.toLowerCase().includes(q)),
-      );
+      list = list.filter((i) => [i.id, i.title, i.description, i.notes, i.design, i.acceptance_criteria].some((s) => s?.toLowerCase().includes(q)));
     }
     list.sort((a, b) => a.priority - b.priority || a.created_at.localeCompare(b.created_at));
     return f.limit ? list.slice(0, f.limit) : list;
@@ -570,7 +562,8 @@ export class TrackerStore {
         const open = [...this.issues.values()].filter(
           (c) => !isClosedStatus(c.status) && c.dependencies?.some((d) => d.type === 'parent-child' && d.depends_on_id === issue.id),
         );
-        if (open.length) throw new TrackerError(`Epic ${issue.id} still has ${open.length} open children (${open.map((c) => c.id).join(', ')}). Use --force to close anyway.`);
+        if (open.length)
+          throw new TrackerError(`Epic ${issue.id} still has ${open.length} open children (${open.map((c) => c.id).join(', ')}). Use --force to close anyway.`);
       }
       const now = nowIso();
       issue.status = 'closed';

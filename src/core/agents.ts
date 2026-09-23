@@ -77,10 +77,7 @@ export class AgentRuns {
 
   find(name: string): AgentRun | undefined {
     const key = name.trim();
-    return (
-      this.runs.get(key) ??
-      [...this.runs.values()].find((r) => r.agent.id === key || r.name.toLowerCase() === key.toLowerCase())
-    );
+    return this.runs.get(key) ?? [...this.runs.values()].find((r) => r.agent.id === key || r.name.toLowerCase() === key.toLowerCase());
   }
 
   spawn(req: SpawnRequest): AgentRun {

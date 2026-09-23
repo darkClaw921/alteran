@@ -48,6 +48,9 @@
     "build": "tsup",
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
+    "lint": "biome lint src test scripts",
+    "lint:fix": "biome lint --write src test scripts",
+    "format": "biome format --write src test scripts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:sandbox": "docker build -f test/sandbox/Dockerfile -t alteran-sandbox . && docker run --rm --network none alteran-sandbox",
@@ -72,6 +75,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
     "@types/diff": "^8.0.0",
     "@types/node": "^26.6.2",
     "@types/picomatch": "^4.0.3",

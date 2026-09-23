@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box, Static } from 'ink';
 import { fmtClock, fmtTokens, seg, truncate, type Line } from '../lines.js';
 import { entryLines } from '../render.js';
@@ -53,17 +52,14 @@ export function LiveTail({ store, width, maxHeight }: { store: UiStore; width: n
 export function StatusLine({ store, width }: { store: UiStore; width: number }) {
   if (!store.running && !store.awaiting) return <Box height={1} />;
   const verb = store.awaiting ? 'Iris hold' : SPINNER_VERBS[Math.floor(store.tick / 12) % SPINNER_VERBS.length];
-  const dots = '...'.slice(0, (store.tick % 6 < 3 ? 3 : 2));
+  const dots = '...'.slice(0, store.tick % 6 < 3 ? 3 : 2);
   const secs = Math.round(store.elapsed / 1000);
   const detail = store.status.detail ? ` - ${truncate(store.status.detail, 28)}` : '';
   const line: Line = [
     seg('* ', C.cyan),
     seg(verb, C.text),
     seg(dots, C.muted),
-    seg(
-      `  (esc to interrupt - ${secs}s - ^ ${fmtTokens(store.runTokens)} tokens - chevron ${store.stages.locked}/9${detail})`,
-      C.muted,
-    ),
+    seg(`  (esc to interrupt - ${secs}s - ^ ${fmtTokens(store.runTokens)} tokens - chevron ${store.stages.locked}/9${detail})`, C.muted),
   ];
   const t: Line = [seg(fmtClock(store.elapsed), C.muted)];
   const used = line.reduce((w, s) => w + s.text.length, 0);

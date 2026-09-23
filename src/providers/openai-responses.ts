@@ -1,9 +1,5 @@
 import OpenAI from 'openai';
-import type {
-  ResponseCreateParamsStreaming,
-  ResponseInputItem,
-  FunctionTool,
-} from 'openai/resources/responses/responses';
+import type { ResponseCreateParamsStreaming, ResponseInputItem, FunctionTool } from 'openai/resources/responses/responses';
 import type { ContentBlock, Message, Provider, ProviderRequest, StopReason, StreamEvent, Usage } from '../types.js';
 import { emptyUsage, textOf } from '../types.js';
 import { parseToolJson } from './json.js';

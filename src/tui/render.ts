@@ -85,9 +85,7 @@ function contextReport(report: ContextReport, width: number): Line[] {
   out.push([]);
   out.push([
     seg(
-      report.measured
-        ? `Last request measured ${fmtK(report.measured)} prompt tokens; the split is estimated.`
-        : 'Nothing sent yet; the split is estimated.',
+      report.measured ? `Last request measured ${fmtK(report.measured)} prompt tokens; the split is estimated.` : 'Nothing sent yet; the split is estimated.',
       C.dim,
     ),
   ]);
@@ -131,7 +129,13 @@ function toolLines(e: Extract<Entry, { kind: 'tool' }>, width: number, expanded:
   const indent: Line = sub ? [seg('  | ', C.dim)] : [];
   const bulletColor = e.status === 'error' ? C.red : e.status === 'running' ? C.cyan : C.gold;
   const args = e.summary ? `(${shortenPaths(e.summary.replace(/\n/g, ' '))})` : '()';
-  const head: Line = [...indent, seg('* ', bulletColor), seg(toolLabel(e.name), C.text, { bold: !sub }), seg(' '), seg(truncate(args, Math.max(10, width - 30)), C.cyan)];
+  const head: Line = [
+    ...indent,
+    seg('* ', bulletColor),
+    seg(toolLabel(e.name), C.text, { bold: !sub }),
+    seg(' '),
+    seg(truncate(args, Math.max(10, width - 30)), C.cyan),
+  ];
   out.push(withRight(head, time(e.t), width));
   if (e.status === 'running') return out;
   const d = e.display;
@@ -142,7 +146,14 @@ function toolLines(e: Extract<Entry, { kind: 'tool' }>, width: number, expanded:
   if (e.status === 'error') {
     const text = shortenPaths(d?.summary ?? e.resultText?.split('\n')[0] ?? 'Error');
     push([seg(text, C.red)], true);
-    if (expanded && e.resultText) e.resultText.split('\n').slice(1, 30).forEach((l) => push([seg(l, C.muted)], false));
+    if (expanded && e.resultText) {
+      e.resultText
+        .split('\n')
+        .slice(1, 30)
+        .forEach((l) => {
+          push([seg(l, C.muted)], false);
+        });
+    }
     return out;
   }
 
@@ -169,24 +180,35 @@ function toolLines(e: Extract<Entry, { kind: 'tool' }>, width: number, expanded:
       }
       const sign = l.kind === 'add' ? '+' : l.kind === 'del' ? '-' : ' ';
       const color = l.kind === 'add' ? C.green : l.kind === 'del' ? C.red : C.muted;
-      out.push(...wrapLine([...indent, ...resultPrefix(false), seg(String(l.lineNo ?? '').padStart(numW) + ' ', C.muted), seg(`${sign} ${l.text}`, color)], width, 4 + numW + 3));
+      out.push(
+        ...wrapLine(
+          [...indent, ...resultPrefix(false), seg(String(l.lineNo ?? '').padStart(numW) + ' ', C.muted), seg(`${sign} ${l.text}`, color)],
+          width,
+          4 + numW + 3,
+        ),
+      );
     }
     return out;
   }
 
   if (expanded && d?.lines?.length) {
-    for (const l of d.lines) push([seg(l, e.name === 'Bash' && /PASS|✓|passed/.test(l) ? C.green : e.name === 'Bash' && /FAIL|✗|error/i.test(l) ? C.red : C.muted)], false);
+    for (const l of d.lines)
+      push([seg(l, e.name === 'Bash' && /PASS|✓|passed/.test(l) ? C.green : e.name === 'Bash' && /FAIL|✗|error/i.test(l) ? C.red : C.muted)], false);
   } else if (e.name === 'Bash' && d?.lines?.length) {
     const tail = d.lines.filter((l) => l.trim()).slice(-3);
     if (tail.length > 1 || (tail[0] && tail[0] !== summary)) {
-      tail.forEach((l) => push([seg(truncate(l, width - 8), /PASS|✓|passed/.test(l) ? C.green : /FAIL|✗|error/i.test(l) ? C.red : C.muted)], false));
+      tail.forEach((l) => {
+        push([seg(truncate(l, width - 8), /PASS|✓|passed/.test(l) ? C.green : /FAIL|✗|error/i.test(l) ? C.red : C.muted)], false);
+      });
     }
   } else if (e.name === 'Task' && e.resultText) {
     e.resultText
       .split('\n')
       .filter((l) => l.trim())
       .slice(0, expanded ? 60 : 4)
-      .forEach((l) => push([seg(l, C.muted)], false));
+      .forEach((l) => {
+        push([seg(l, C.muted)], false);
+      });
   }
   return out;
 }
@@ -211,14 +233,20 @@ function computeLines(e: Entry, width: number, expanded: boolean, tick = 0): Lin
       const md = markdown(e.text.trim(), width - 2);
       if (!md.length) return [];
       const out: Line[] = [[]];
-      md.forEach((l, i) => out.push(i === 0 ? [seg('* ', C.gold), ...l] : [seg('  '), ...l]));
+      md.forEach((l, i) => {
+        out.push(i === 0 ? [seg('* ', C.gold), ...l] : [seg('  '), ...l]);
+      });
       return out;
     }
     case 'thinking': {
       const text = e.text.trim();
       if (!text) return [];
       if (!expanded) {
-        const last = text.split('\n').filter((l) => l.trim()).slice(-1)[0] ?? '';
+        const last =
+          text
+            .split('\n')
+            .filter((l) => l.trim())
+            .slice(-1)[0] ?? '';
         return [[seg('  ✻ ', C.dim), seg(truncate(e.live ? last : `thought for a while (ctrl+o to show)`, width - 6), C.dim, { italic: true })]];
       }
       return wrapLine([seg('  ✻ ', C.dim), seg(text, C.muted, { italic: true })], width, 4);
@@ -230,13 +258,21 @@ function computeLines(e: Entry, width: number, expanded: boolean, tick = 0): Lin
       const mark = e.status === 'running' ? '>>' : e.status === 'done' ? '<<' : e.status === 'stopped' ? 'xx' : '!!';
       const tail = e.status === 'running' ? `${e.background ? 'background, ' : ''}${e.detail ?? 'thinking'}` : '';
       const head = withRight(
-        [seg(`${mark} `, color), seg(e.label, C.text, { bold: true }), ...(e.name ? [seg(`  [${e.name}]`, C.dim)] : []), ...(tail ? [seg(`  ${tail}`, C.muted)] : [])],
+        [
+          seg(`${mark} `, color),
+          seg(e.label, C.text, { bold: true }),
+          ...(e.name ? [seg(`  [${e.name}]`, C.dim)] : []),
+          ...(tail ? [seg(`  ${tail}`, C.muted)] : []),
+        ],
         time(e.t),
         width,
       );
       const out: Line[] = [[], head];
       if (e.status !== 'running' && e.summary) {
-        const lines = e.summary.split('\n').filter((l) => l.trim()).slice(0, expanded ? 40 : 3);
+        const lines = e.summary
+          .split('\n')
+          .filter((l) => l.trim())
+          .slice(0, expanded ? 40 : 3);
         for (const l of lines) out.push(...wrapLine([seg('  L ', C.rule), seg(l, C.muted)], width, 4));
       }
       return out;
@@ -260,7 +296,18 @@ function computeLines(e: Entry, width: number, expanded: boolean, tick = 0): Lin
     case 'diff': {
       const out: Line[] = [[]];
       for (const l of e.text.split('\n')) {
-        const color = l.startsWith('+++') || l.startsWith('---') ? C.gold : l.startsWith('+') ? C.green : l.startsWith('-') ? C.red : l.startsWith('@@') ? C.cyan : l.startsWith('diff ') ? C.bronze : C.muted;
+        const color =
+          l.startsWith('+++') || l.startsWith('---')
+            ? C.gold
+            : l.startsWith('+')
+              ? C.green
+              : l.startsWith('-')
+                ? C.red
+                : l.startsWith('@@')
+                  ? C.cyan
+                  : l.startsWith('diff ')
+                    ? C.bronze
+                    : C.muted;
         out.push(...wrapLine([seg(l, color)], width));
       }
       return out;

@@ -31,7 +31,36 @@ export interface HookResult {
   stop?: boolean;
   /** Rewritten tool input (PreToolUse updatedInput). */
   updatedInput?: Record<string, unknown>;
+  /** Allow rules the hook asked to add (Claude's `updatedPermissions`). */
+  updatedPermissions?: string[];
   messages: string[];
+}
+
+/**
+ * Claude's `updatedPermissions` describes several kinds of permission change; only "add an allow
+ * rule" carries something this runner can act on, so anything else is ignored rather than guessed at.
+ */
+function permissionRules(entries: unknown): string[] {
+  if (!Array.isArray(entries)) return [];
+  const out: string[] = [];
+  for (const e of entries) {
+    if (typeof e === 'string') {
+      out.push(e);
+      continue;
+    }
+    if (!e || typeof e !== 'object') continue;
+    const update = e as { behavior?: string; rule?: string; rules?: Array<{ toolName?: string; ruleContent?: string }> };
+    if (update.behavior && update.behavior !== 'allow') continue;
+    if (typeof update.rule === 'string') {
+      out.push(update.rule);
+      continue;
+    }
+    for (const r of update.rules ?? []) {
+      if (!r?.toolName) continue;
+      out.push(r.ruleContent ? `${r.toolName}(${r.ruleContent})` : r.toolName);
+    }
+  }
+  return out;
 }
 
 function matches(matcher: string | undefined, target: string | undefined): boolean {
@@ -72,10 +101,7 @@ function runCommand(
 
 /** Claude Code compatible command hooks (settings.json `hooks`, plugin hooks/hooks.json). */
 export class HookRunner {
-  constructor(
-    private sources: HookSource[],
-    private base: { sessionId: string; transcriptPath: string; cwd: () => string; projectDir: string },
-  ) {}
+  constructor(private base: { sessionId: string; transcriptPath: string; cwd: () => string; projectDir: string }) {}
 
   has(event: HookEvent): boolean {
     return this.forEvent(event).length > 0;
@@ -151,6 +177,8 @@ export class HookRunner {
         if (hso.permissionDecision === 'deny') result.reason = hso.permissionDecisionReason ?? result.reason;
       }
       if (hso.updatedInput && typeof hso.updatedInput === 'object') result.updatedInput = hso.updatedInput;
+      const rules = permissionRules(hso.updatedPermissions);
+      if (rules.length) result.updatedPermissions = [...(result.updatedPermissions ?? []), ...rules];
       if (hso.additionalContext) result.context.push(String(hso.additionalContext));
       if (json.systemMessage) result.messages.push(String(json.systemMessage));
     }
@@ -160,9 +188,9 @@ export class HookRunner {
 
 export function buildHookRunner(
   sources: Array<{ hooks: Record<string, HookMatcher[]>; env?: Record<string, string>; origin: string }>,
-  base: ConstructorParameters<typeof HookRunner>[1],
+  base: ConstructorParameters<typeof HookRunner>[0],
 ): HookRunner {
-  const runner = new HookRunner([], base);
+  const runner = new HookRunner(base);
   for (const s of sources) {
     for (const [event, matchers] of Object.entries(s.hooks)) {
       for (const m of matchers) runner.register(event as HookEvent, m, { matchers: [m], env: s.env, origin: s.origin });

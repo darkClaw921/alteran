@@ -28,7 +28,8 @@ const ORDER: Array<[StageKey, string]> = [
   ['commit', 'commit + push'],
 ];
 
-const TYPECHECK = /\b(tsc|vue-tsc|mypy|pyright|cargo\s+(check|build)|go\s+(vet|build)|typecheck|type-check|flow\s+check|dotnet\s+build|mvn\s+compile|gradle\s+(build|compile))/;
+const TYPECHECK =
+  /\b(tsc|vue-tsc|mypy|pyright|cargo\s+(check|build)|go\s+(vet|build)|typecheck|type-check|flow\s+check|dotnet\s+build|mvn\s+compile|gradle\s+(build|compile))/;
 const TESTS = /\b(test|tests|vitest|jest|pytest|mocha|ava|cargo\s+test|go\s+test|rspec|phpunit|unittest|playwright)\b/;
 const LINT = /\b(eslint|lint|prettier|ruff|black|flake8|clippy|rustfmt|gofmt|golangci|biome|stylelint|format)\b/;
 const COMMIT = /\bgit\s+(commit|push)\b|\bgh\s+pr\s+create\b/;
@@ -192,7 +193,7 @@ export class StageTracker {
       case 'patch':
         return `patch ${this.files.patched.size} files`;
       case 'tests':
-        return this.tests && this.tests.total ? `unit tests ${this.tests.passed}/${this.tests.total}` : 'unit tests';
+        return this.tests?.total ? `unit tests ${this.tests.passed}/${this.tests.total}` : 'unit tests';
       default:
         return st.label;
     }

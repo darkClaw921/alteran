@@ -94,7 +94,11 @@ describe('tracker store', () => {
     fs.appendFileSync(store.jsonlPath, JSON.stringify(raw) + '\n');
     store.reload(true);
     store.create({ title: 'New one' });
-    const lines = fs.readFileSync(store.jsonlPath, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const lines = fs
+      .readFileSync(store.jsonlPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
     const imported = lines.find((l) => l.id === 'demo-zzz');
     expect(imported.some_future_field).toEqual({ nested: true });
     expect(imported.content_hash).toBe('abc');

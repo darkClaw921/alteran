@@ -33,7 +33,10 @@ export function toChatMessages(system: string, messages: Message[]): ChatComplet
   const out: ChatCompletionMessageParam[] = [{ role: 'system', content: system }];
   for (const m of messages) {
     if (m.role === 'assistant') {
-      const text = m.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('');
+      const text = m.content
+        .filter((b) => b.type === 'text')
+        .map((b) => (b as { text: string }).text)
+        .join('');
       const calls = m.content.filter((b) => b.type === 'tool_use');
       const reasoning = m.content
         .filter((b) => b.type === 'thinking')
@@ -128,10 +131,8 @@ export class OpenAICompatProvider implements Provider {
 
     for await (const chunk of stream) {
       if (chunk.usage) {
-        const cached = (chunk.usage as { prompt_tokens_details?: { cached_tokens?: number } }).prompt_tokens_details
-          ?.cached_tokens ?? 0;
-        const written = (chunk.usage as { prompt_tokens_details?: { cache_write_tokens?: number } }).prompt_tokens_details
-          ?.cache_write_tokens ?? 0;
+        const cached = (chunk.usage as { prompt_tokens_details?: { cached_tokens?: number } }).prompt_tokens_details?.cached_tokens ?? 0;
+        const written = (chunk.usage as { prompt_tokens_details?: { cache_write_tokens?: number } }).prompt_tokens_details?.cache_write_tokens ?? 0;
         usage.inputTokens = (chunk.usage.prompt_tokens ?? 0) - cached - written;
         usage.cacheReadTokens = cached;
         usage.cacheWriteTokens = written;

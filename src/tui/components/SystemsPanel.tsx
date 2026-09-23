@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box } from 'ink';
 import { bar, fmtClock, fmtTokens, seg, truncate, wrapLine, type Line } from '../lines.js';
 import type { UiStore } from '../store.js';
@@ -75,7 +74,6 @@ function burnGraph(store: UiStore, width: number, height: number): Line[] {
 
 export function SystemsPanel({ store, rt, width, height }: { store: UiStore; rt: Runtime; width: number; height: number }) {
   const inner = width - 4;
-  const ctxRatio = store.contextTokens / store.contextWindow;
   const tpm = store.tokensPerMinute();
   const rateCap = 120_000;
   const tests = store.stages.tests;
@@ -85,10 +83,12 @@ export function SystemsPanel({ store, rt, width, height }: { store: UiStore; rt:
   const bars: Line[] = [
     contextMeter(store, inner),
     meter('TOK RATE', tpm / rateCap, `${fmtTokens(tpm)} tok/m`, inner, C.cyan),
-    tests && tests.total
+    tests?.total
       ? meter('TESTS', tests.passed / Math.max(1, tests.total), `${tests.passed}/${tests.total}`, inner, tests.failed ? C.red : C.green)
       : meter('TESTS', 0, 'not run', inner, C.dim),
-    tests?.coverage != null ? meter('COVERAGE', tests.coverage / 100, 'covered', inner, C.green) : meter('MCP', mcp.length ? connected / mcp.length : 0, `${connected}/${mcp.length} servers`, inner, connected ? C.green : C.dim),
+    tests?.coverage != null
+      ? meter('COVERAGE', tests.coverage / 100, 'covered', inner, C.green)
+      : meter('MCP', mcp.length ? connected / mcp.length : 0, `${connected}/${mcp.length} servers`, inner, connected ? C.green : C.dim),
   ];
 
   // AGENTS only earns its space once something has been delegated.
@@ -100,7 +100,9 @@ export function SystemsPanel({ store, rt, width, height }: { store: UiStore; rt:
 
   const cons = store.consilium;
   const consRows = Math.max(3, Math.min(8, height - 30 - graphHeight - (agents.length ? agents.length + 2 : 0)));
-  const items = cons.items.slice(0, consRows).map((i) => [seg(i.mark + ' ', i.color), seg(truncate(i.title, inner - 4), i.color === C.muted ? C.muted : C.text)] as Line);
+  const items = cons.items
+    .slice(0, consRows)
+    .map((i) => [seg(i.mark + ' ', i.color), seg(truncate(i.title, inner - 4), i.color === C.muted ? C.muted : C.text)] as Line);
   if (cons.items.length > consRows) items.push([seg(`... ${cons.items.length - consRows} more`, C.dim)]);
   if (!items.length) items.push([seg('(no tasks)', C.dim)]);
 
@@ -113,7 +115,11 @@ export function SystemsPanel({ store, rt, width, height }: { store: UiStore; rt:
 
   const shield: Line[] = rt.permissions.shield().map((s) => {
     const color = s.state === 'on' ? C.green : s.state === 'partial' ? C.amber : C.muted;
-    return [seg(s.label.padEnd(8), C.muted), seg(`[${s.state === 'on' ? '#' : s.state === 'partial' ? '/' : ' '}] `, color), seg(truncate(s.text, inner - 12), C.text)];
+    return [
+      seg(s.label.padEnd(8), C.muted),
+      seg(`[${s.state === 'on' ? '#' : s.state === 'partial' ? '/' : ' '}] `, color),
+      seg(truncate(s.text, inner - 12), C.text),
+    ];
   });
 
   const briefText = cons.source === 'tracker' && cons.current ? cons.current : store.lastPrompt || '(waiting for orders)';

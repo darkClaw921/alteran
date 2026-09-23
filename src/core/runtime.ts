@@ -16,7 +16,7 @@ import { killAllShells } from '../tools/bash.js';
 import type { AskQuestions } from '../tools/misc-tools.js';
 import { BUILTIN_TOOLS, MAIN_ONLY_TOOLS, ORCHESTRATION_TOOLS, TOOL_ALIASES } from '../tools/registry.js';
 import type { Tool } from '../tools/types.js';
-import { textOf } from '../types.js';
+import { addUsage, emptyUsage, promptTokens, textOf, type Usage } from '../types.js';
 import { Agent, type AgentHandle } from './agent.js';
 import { AgentRuns, notification, type AgentResult, type SpawnRequest } from './agents.js';
 import { EventBus } from './events.js';
@@ -24,10 +24,7 @@ import { gitSnapshot, mainSystemPrompt, type EnvInfo, type PromptCapabilities } 
 import { Scheduler } from './schedule.js';
 import { SessionStore } from './session.js';
 
-export type PlanDecision =
-  | { kind: 'approve'; mode?: PermissionMode }
-  | { kind: 'tasks'; mode?: PermissionMode }
-  | { kind: 'feedback'; text: string };
+export type PlanDecision = { kind: 'approve'; mode?: PermissionMode } | { kind: 'tasks'; mode?: PermissionMode } | { kind: 'feedback'; text: string };
 
 /** Interactive capabilities supplied by the TUI; absent in headless mode. */
 export interface UIBridge {
@@ -76,6 +73,11 @@ export class Runtime {
   lastPlan?: { text: string; file: string };
   private gitAtStart?: string;
   private gitSnapshotFor?: string;
+  /** Latest cumulative usage per agent, so session spend can be summed without double counting. */
+  private usageByAgent = new Map<string, Usage>();
+  private budgetWarned = false;
+  /** Spend a `/clear` or `/budget reset` forgave: the limit counts from here, the meter does not. */
+  private budgetBase: Usage = emptyUsage();
   modeBeforePlan?: PermissionMode;
   main!: Agent;
   readonly agents: AgentRuns;
@@ -105,6 +107,12 @@ export class Runtime {
     const mode = opts.mode ?? this.settings.permissions?.defaultMode ?? 'default';
     this.permissions = new Permissions(this.ext.rules, mode, this.root);
     this.ui = opts.ui;
+    this.bus.on((ev) => {
+      if (ev.type !== 'usage') return;
+      this.usageByAgent.set(ev.agentId, ev.total);
+      // Written every turn so a session that is killed rather than closed still knows what it spent.
+      this.session?.recordUsage(this.sessionUsage());
+    });
 
     let resumeFile: string | undefined;
     if (opts.resume === 'last') resumeFile = SessionStore.list(this.root)[0]?.file;
@@ -127,7 +135,10 @@ export class Runtime {
     this.main = new Agent({ runtime: this, label: 'alteran', model: this.model, system: this.buildMainSystem() });
     this.main.onMessage = (m) => this.session.append(m);
     if (resumeFile) {
-      this.main.messages = SessionStore.load(resumeFile).messages;
+      const saved = SessionStore.load(resumeFile);
+      // Counted under a key no agent can take, so it adds to this run instead of being overwritten.
+      this.usageByAgent.set('(earlier turns)', saved.usage);
+      this.main.messages = saved.messages;
       this.main.contextTokens = this.main.messages.reduce((n, m) => n + estimateTokens(JSON.stringify(m.content)), 0);
       this.resumedId = this.session.id;
     }
@@ -177,6 +188,65 @@ export class Runtime {
     return this.settings.cache?.ttl ?? '1h';
   }
 
+  /** Free trimming of old tool results, ahead of the paid full compaction. */
+  get microcompact(): { enabled: boolean; keepRecent: number; threshold: number } {
+    return {
+      enabled: this.settings.microcompact?.enabled ?? true,
+      keepRecent: this.settings.microcompact?.keepRecent ?? 8,
+      threshold: this.settings.microcompact?.threshold ?? 0.6,
+    };
+  }
+
+  /** Configured session spend limit (`budget.tokens` / `budget.cost`) and what to do at it. */
+  get budget(): { tokens?: number; cost?: number; onExceed: 'warn' | 'stop' } {
+    return {
+      tokens: this.settings.budget?.tokens ?? this.settings.budgetTokens,
+      cost: this.settings.budget?.cost,
+      onExceed: this.settings.budget?.onExceed ?? 'warn',
+    };
+  }
+
+  /** Spend across the orchestrator and every agent it spawned, each counted once at its latest total. */
+  sessionUsage(): Usage {
+    let sum = emptyUsage();
+    for (const u of this.usageByAgent.values()) sum = addUsage(sum, u);
+    return sum;
+  }
+
+  /**
+   * Where the session stands against its budget. `warn` is reported once and then goes quiet so a
+   * long run does not repeat itself; `stop` keeps reporting so the caller halts every turn. No
+   * budget configured means no limit at all, so nothing changes for existing users.
+   */
+  budgetCheck(): { state: 'ok' | 'warn' | 'stop'; used: number; limit: number; unit: 'tokens' | 'cost' } {
+    const none = { state: 'ok' as const, used: 0, limit: 0, unit: 'tokens' as const };
+    const { tokens, cost, onExceed } = this.budget;
+    if (tokens === undefined && cost === undefined) return none;
+    const usage = this.sessionUsage();
+    const usedTokens = promptTokens(usage) + usage.outputTokens - (promptTokens(this.budgetBase) + this.budgetBase.outputTokens);
+    const usedCost = (usage.cost ?? 0) - (this.budgetBase.cost ?? 0);
+    const overTokens = tokens !== undefined && usedTokens >= tokens;
+    const overCost = cost !== undefined && usedCost >= cost;
+    if (!overTokens && !overCost) return none;
+    const unit = overTokens ? 'tokens' : 'cost';
+    const used = overTokens ? usedTokens : usedCost;
+    const limit = (overTokens ? tokens : cost) as number;
+    if (onExceed === 'stop') return { state: 'stop', used, limit, unit };
+    if (this.budgetWarned) return none;
+    this.budgetWarned = true;
+    return { state: 'warn', used, limit, unit };
+  }
+
+  /**
+   * Start the limit over from what has been spent so far — a fresh conversation, or a raised limit.
+   * The meter itself is untouched: the money was spent, and a session that forgets that cannot tell
+   * the user what it cost.
+   */
+  resetBudget() {
+    this.budgetWarned = false;
+    this.budgetBase = this.sessionUsage();
+  }
+
   /**
    * Hand a finished background report to its parent. A parent mid-turn picks it up itself through
    * `AgentRuns.drain`; an idle one needs the front end to start a turn for it.
@@ -185,7 +255,10 @@ export class Runtime {
     const run = agentId === 'main' ? undefined : this.agents.find(agentId);
     const target = agentId === 'main' ? this.main : run?.agent;
     // An agent that no longer exists cannot be told anything; its work belongs to the orchestrator.
-    if (!target) return this.wake('main', extra);
+    if (!target) {
+      this.wake('main', extra);
+      return;
+    }
     // Mid-turn the agent collects its own reports; only the extra has to be handed over.
     if (target.busy) {
       if (extra) target.pendingContext.push(extra);
@@ -199,6 +272,15 @@ export class Runtime {
     if (run) this.agents.resume(run, text);
     else if (this.onWake) this.onWake(agentId, text);
     else target.pendingContext.push(text);
+  }
+
+  /**
+   * Fire the `Notification` hook. It is advisory — it tells a setup that something wants attention
+   * (a call blocked on approval, a turn that just ended) — so its result is ignored and a slow hook
+   * can never hold up the work it is describing.
+   */
+  notify(type: 'permission_request' | 'idle', message: string) {
+    void this.hooks.run('Notification', { notification_type: type, message }).catch(() => {});
   }
 
   setMode(mode: PermissionMode) {
@@ -237,9 +319,14 @@ export class Runtime {
    * appended to that same file, so resuming twice does not fork the transcript.
    */
   resumeSession(file: string): { id: string; messages: number } {
-    const { messages } = SessionStore.load(file);
+    const { messages, usage } = SessionStore.load(file);
     const id = path.basename(file, '.jsonl');
     this.session = new SessionStore(this.root, { cwd: this.cwd, root: this.root, model: this.model.id }, id);
+    // The resumed session's spend replaces this process's own: from here on, this is that session.
+    this.usageByAgent.clear();
+    this.usageByAgent.set('(earlier turns)', usage);
+    this.budgetBase = emptyUsage();
+    this.budgetWarned = false;
     this.main.messages = messages;
     this.resumedId = id;
     this.main.contextTokens = messages.reduce((n, m) => n + estimateTokens(JSON.stringify(m.content)), 0);
@@ -379,6 +466,8 @@ export class Runtime {
     this.main.messages = [];
     this.main.todos = [];
     this.main.contextTokens = 0;
+    // The budget starts over, the spend does not: clearing the transcript does not refund anything.
+    this.resetBudget();
     this.main.system = this.buildMainSystem();
     this.session.reset('clear');
     this.bus.emit({ type: 'todos', agentId: 'main', todos: [] });

@@ -60,7 +60,9 @@ export function runShell(
   opts: { timeout?: number; signal?: AbortSignal; trackCwd?: boolean; env?: Record<string, string> } = {},
 ): Promise<{ output: string; code: number | null; timedOut: boolean; interrupted: boolean }> {
   const cwdFile = path.join(os.tmpdir(), `alteran-cwd-${process.pid}-${Math.random().toString(36).slice(2)}`);
-  const script = opts.trackCwd === false ? command : wrap(command, runtime.cwd, cwdFile);
+  const trackCwd = opts.trackCwd !== false;
+  const startCwd = runtime.cwd;
+  const script = trackCwd ? wrap(command, startCwd, cwdFile) : command;
   return new Promise((resolve) => {
     const proc = spawn(shellPath(), ['-c', script], {
       cwd: runtime.cwd,
@@ -76,10 +78,13 @@ export function runShell(
     };
     proc.stdout!.on('data', onData);
     proc.stderr!.on('data', onData);
-    const timer = setTimeout(() => {
-      timedOut = true;
-      killTree(proc);
-    }, Math.min(opts.timeout ?? DEFAULT_TIMEOUT, MAX_TIMEOUT));
+    const timer = setTimeout(
+      () => {
+        timedOut = true;
+        killTree(proc);
+      },
+      Math.min(opts.timeout ?? DEFAULT_TIMEOUT, MAX_TIMEOUT),
+    );
     const onAbort = () => {
       interrupted = true;
       killTree(proc);
@@ -93,7 +98,9 @@ export function runShell(
       opts.signal?.removeEventListener('abort', onAbort);
       try {
         const next = fs.readFileSync(cwdFile, 'utf8').trim();
-        if (next && fs.existsSync(next)) runtime.cwd = next;
+        // The shell keeps its directory between calls, but only for the call that owns the shared
+        // cwd: if another one moved it meanwhile, this late `pwd` is stale and must not undo that.
+        if (trackCwd && runtime.cwd === startCwd && next && fs.existsSync(next)) runtime.cwd = next;
         fs.rmSync(cwdFile, { force: true });
       } catch {}
       resolve({ output, code, timedOut, interrupted });
@@ -142,7 +149,8 @@ export const BashTool: Tool<z.infer<typeof bashSchema>> = {
         summary: `Running in background (${id})`,
       });
     }
-    const r = await runShell(rt, input.command, { timeout: input.timeout, signal: ctx.signal });
+    // A deferred run must not move the shared working directory out from under a live turn.
+    const r = await runShell(rt, input.command, { timeout: input.timeout, signal: ctx.signal, trackCwd: !ctx.direct });
     let out = truncateMiddle(r.output.trimEnd());
     if (r.timedOut) out += `\n[Command timed out after ${input.timeout ?? DEFAULT_TIMEOUT}ms]`;
     if (r.interrupted) out += '\n[Interrupted by user]';

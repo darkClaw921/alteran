@@ -133,8 +133,7 @@ function applyEdit(content: string, e: EditSpec): { result: string } | { error: 
   if (e.old_string === '') return { error: 'old_string is empty; use Write to create files.' };
   const count = content.split(e.old_string).length - 1;
   if (count === 0) return { error: `old_string not found in file:\n${e.old_string.slice(0, 500)}` };
-  if (count > 1 && !e.replace_all)
-    return { error: `old_string matches ${count} times. Add surrounding context to make it unique, or set replace_all.` };
+  if (count > 1 && !e.replace_all) return { error: `old_string matches ${count} times. Add surrounding context to make it unique, or set replace_all.` };
   return {
     result: e.replace_all ? content.split(e.old_string).join(e.new_string) : content.replace(e.old_string, () => e.new_string),
   };
@@ -182,9 +181,7 @@ export const EditTool: Tool<z.infer<typeof editSchema>> = {
 
 const multiSchema = z.object({
   file_path: z.string(),
-  edits: z
-    .array(z.object({ old_string: z.string(), new_string: z.string(), replace_all: z.boolean().optional() }))
-    .min(1),
+  edits: z.array(z.object({ old_string: z.string(), new_string: z.string(), replace_all: z.boolean().optional() })).min(1),
 });
 
 export const MultiEditTool: Tool<z.infer<typeof multiSchema>> = {

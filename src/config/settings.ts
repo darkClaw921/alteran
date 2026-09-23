@@ -26,11 +26,13 @@ export const ProviderConfigSchema = z.object({
 });
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 
-const HookCommandSchema = z.object({
-  type: z.string().default('command'),
-  command: z.string().optional(),
-  timeout: z.number().optional(),
-}).loose();
+const HookCommandSchema = z
+  .object({
+    type: z.string().default('command'),
+    command: z.string().optional(),
+    timeout: z.number().optional(),
+  })
+  .loose();
 
 export const HookMatcherSchema = z.object({
   matcher: z.string().optional(),
@@ -38,82 +40,106 @@ export const HookMatcherSchema = z.object({
 });
 export type HookMatcher = z.infer<typeof HookMatcherSchema>;
 
-export const McpServerSchema = z.object({
-  type: z.enum(['stdio', 'http', 'sse', 'streamable-http']).optional(),
-  command: z.string().optional(),
-  args: z.array(z.string()).optional(),
-  env: z.record(z.string(), z.string()).optional(),
-  cwd: z.string().optional(),
-  url: z.string().optional(),
-  headers: z.record(z.string(), z.string()).optional(),
-  disabled: z.boolean().optional(),
-}).loose();
+export const McpServerSchema = z
+  .object({
+    type: z.enum(['stdio', 'http', 'sse', 'streamable-http']).optional(),
+    command: z.string().optional(),
+    args: z.array(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
+    cwd: z.string().optional(),
+    url: z.string().optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    disabled: z.boolean().optional(),
+  })
+  .loose();
 export type McpServerConfig = z.infer<typeof McpServerSchema>;
 
-export const SettingsSchema = z.object({
-  model: z.string().optional(),
-  /** Cheaper model for compaction, titles and `model: haiku` subagents. */
-  smallModel: z.string().optional(),
-  reasoning: ReasoningSchema.optional(),
-  maxOutputTokens: z.number().optional(),
-  autoCompactThreshold: z.number().min(0.3).max(0.98).optional(),
-  providers: z.record(z.string(), ProviderConfigSchema).optional(),
-  modelAliases: z.record(z.string(), z.string()).optional(),
-  /** Pinned upstream providers per "provider:model", best first (polza/OpenRouter routing). */
-  routes: z.record(z.string(), z.array(z.string())).optional(),
-  permissions: z
-    .object({
-      defaultMode: PermissionModeSchema.optional(),
-      allow: z.array(z.string()).optional(),
-      deny: z.array(z.string()).optional(),
-      ask: z.array(z.string()).optional(),
-      additionalDirectories: z.array(z.string()).optional(),
-    })
-    .optional(),
-  hooks: z.record(z.string(), z.array(HookMatcherSchema)).optional(),
-  env: z.record(z.string(), z.string()).optional(),
-  mcpServers: z.record(z.string(), McpServerSchema).optional(),
-  disabledMcpServers: z.array(z.string()).optional(),
-  disabledPlugins: z.array(z.string()).optional(),
-  /** Which foreign ecosystems to import agents/skills/plugins/MCP from. */
-  compat: z
-    .object({
-      claude: z.boolean().optional(),
-      codex: z.boolean().optional(),
-      agents: z.boolean().optional(),
-      cursor: z.boolean().optional(),
-      gemini: z.boolean().optional(),
-    })
-    .optional(),
-  /** Show the ASTRIA PORTA / VIRES side panels on start (default: console only). */
-  panels: z.boolean().optional(),
-  /** Report the mouse wheel to the TUI so the console scrolls (default: true). */
-  mouse: z.boolean().optional(),
-  /** Play the gate-dialling animation while the agent starts (default: true). */
-  intro: z.boolean().optional(),
-  /** TUI palette: dark (default, readable) | contrast | design (mockup colors). */
-  theme: z.enum(['dark', 'contrast', 'design']).optional(),
-  /** Per-turn token budget shown in the status bar. */
-  budgetTokens: z.number().optional(),
-  /** Prompt cache: `1h` entries survive the pauses of an interactive session, `5m` is cheaper to write. */
-  cache: z.object({ ttl: z.enum(['5m', '1h']).optional() }).optional(),
-  /** Delegation limits: how deep agents may nest and how many may run at once. */
-  agents: z
-    .object({
-      maxDepth: z.number().int().min(1).max(5).optional(),
-      maxConcurrent: z.number().int().min(1).max(32).optional(),
-    })
-    .optional(),
-}).loose();
+export const SettingsSchema = z
+  .object({
+    model: z.string().optional(),
+    /** Cheaper model for compaction, titles and `model: haiku` subagents. */
+    smallModel: z.string().optional(),
+    reasoning: ReasoningSchema.optional(),
+    maxOutputTokens: z.number().optional(),
+    autoCompactThreshold: z.number().min(0.3).max(0.98).optional(),
+    providers: z.record(z.string(), ProviderConfigSchema).optional(),
+    modelAliases: z.record(z.string(), z.string()).optional(),
+    /** Pinned upstream providers per "provider:model", best first (polza/OpenRouter routing). */
+    routes: z.record(z.string(), z.array(z.string())).optional(),
+    permissions: z
+      .object({
+        defaultMode: PermissionModeSchema.optional(),
+        allow: z.array(z.string()).optional(),
+        deny: z.array(z.string()).optional(),
+        ask: z.array(z.string()).optional(),
+        additionalDirectories: z.array(z.string()).optional(),
+      })
+      .optional(),
+    hooks: z.record(z.string(), z.array(HookMatcherSchema)).optional(),
+    env: z.record(z.string(), z.string()).optional(),
+    mcpServers: z.record(z.string(), McpServerSchema).optional(),
+    disabledMcpServers: z.array(z.string()).optional(),
+    disabledPlugins: z.array(z.string()).optional(),
+    /** Which foreign ecosystems to import agents/skills/plugins/MCP from. */
+    compat: z
+      .object({
+        claude: z.boolean().optional(),
+        codex: z.boolean().optional(),
+        agents: z.boolean().optional(),
+        cursor: z.boolean().optional(),
+        gemini: z.boolean().optional(),
+      })
+      .optional(),
+    /** Show the ASTRIA PORTA / VIRES side panels on start (default: console only). */
+    panels: z.boolean().optional(),
+    /** Report the mouse wheel to the TUI so the console scrolls (default: true). */
+    mouse: z.boolean().optional(),
+    /** Play the gate-dialling animation while the agent starts (default: true). */
+    intro: z.boolean().optional(),
+    /** TUI palette: dark (default, readable) | contrast | design (mockup colors). */
+    theme: z.enum(['dark', 'contrast', 'design']).optional(),
+    /**
+     * Session spend limit. `tokens` counts prompt+output tokens across the orchestrator and every
+     * agent it spawned; `cost` uses the amount the gateway reports. `warn` tells the model once and
+     * keeps going; `stop` ends the turn at the limit and refuses further ones until it is reset.
+     */
+    budget: z
+      .object({
+        tokens: z.number().positive().optional(),
+        cost: z.number().positive().optional(),
+        onExceed: z.enum(['warn', 'stop']).optional(),
+      })
+      .optional(),
+    /** Older alias for `budget.tokens`. */
+    budgetTokens: z.number().optional(),
+    /**
+     * Free trimming of the window before the paid full compaction: old tool results are replaced by a
+     * one-line note. `keepRecent` protects the results a turn is still working from, `threshold` is the
+     * share of the window at which trimming starts (kept below `autoCompactThreshold`).
+     */
+    microcompact: z
+      .object({
+        enabled: z.boolean().optional(),
+        keepRecent: z.number().int().min(0).max(50).optional(),
+        threshold: z.number().min(0.2).max(0.98).optional(),
+      })
+      .optional(),
+    /** Prompt cache: `1h` entries survive the pauses of an interactive session, `5m` is cheaper to write. */
+    cache: z.object({ ttl: z.enum(['5m', '1h']).optional() }).optional(),
+    /** Delegation limits: how deep agents may nest and how many may run at once. */
+    agents: z
+      .object({
+        maxDepth: z.number().int().min(1).max(5).optional(),
+        maxConcurrent: z.number().int().min(1).max(32).optional(),
+      })
+      .optional(),
+  })
+  .loose();
 export type Settings = z.infer<typeof SettingsSchema>;
 
 export function settingsFiles(cwd: string): string[] {
   const root = projectRoot(cwd);
-  return [
-    path.join(alteranHome(), 'settings.json'),
-    path.join(root, '.alteran', 'settings.json'),
-    path.join(root, '.alteran', 'settings.local.json'),
-  ];
+  return [path.join(alteranHome(), 'settings.json'), path.join(root, '.alteran', 'settings.json'), path.join(root, '.alteran', 'settings.local.json')];
 }
 
 function mergeSettings(base: Settings, over: Settings): Settings {

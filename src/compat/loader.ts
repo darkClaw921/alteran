@@ -1,17 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseToml } from 'smol-toml';
-import {
-  alteranHome,
-  claudeHome,
-  codexHome,
-  HOME,
-  assetPath,
-  expandHome,
-  isDir,
-  isFile,
-  readJson,
-} from '../config/paths.js';
+import { alteranHome, claudeHome, codexHome, HOME, assetPath, expandHome, isDir, isFile, readJson } from '../config/paths.js';
 import type { HookMatcher, McpServerConfig, Settings } from '../config/settings.js';
 import { parseFrontmatter, toList } from './frontmatter.js';
 import type { AgentDef, CommandDef, Extensions, InstructionFile, Origin, PluginDef, SkillDef } from './types.js';
@@ -250,11 +240,7 @@ export class ExtensionLoader {
     this.loadCommandsDir(path.join(root, '.claude', 'commands'), 'claude');
     this.loadSkillsDir(path.join(root, '.claude', 'skills'), 'claude');
 
-    const layers = [
-      path.join(claudeHome(), 'settings.json'),
-      path.join(root, '.claude', 'settings.json'),
-      path.join(root, '.claude', 'settings.local.json'),
-    ];
+    const layers = [path.join(claudeHome(), 'settings.json'), path.join(root, '.claude', 'settings.json'), path.join(root, '.claude', 'settings.local.json')];
     const enabled = new Map<string, boolean>();
     for (const file of layers) {
       const s = readJson<Record<string, any>>(file);
@@ -446,7 +432,10 @@ function normalizeHooks(h: Record<string, unknown>): Record<string, HookMatcher[
 
 function firstLine(s: string): string | undefined {
   const l = s.split('\n').find((x) => x.trim() && !x.startsWith('---'));
-  return l?.replace(/^#+\s*/, '').trim().slice(0, 120);
+  return l
+    ?.replace(/^#+\s*/, '')
+    .trim()
+    .slice(0, 120);
 }
 
 function unescapeDesc(s: string): string {

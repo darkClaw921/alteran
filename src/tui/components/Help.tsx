@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box } from 'ink';
 import { seg, truncate, type Line } from '../lines.js';
 import { C } from '../theme.js';

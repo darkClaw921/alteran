@@ -14,7 +14,10 @@ for (let i = 0; i < 12; i++) {
 }
 await sleep(600);
 console.log('--- bottom ---\n' + io.screen());
-for (let i = 0; i < 30; i++) { io.key('\u001b[<64;10;10M'); await sleep(20); }
+for (let i = 0; i < 30; i++) {
+  io.key('\u001b[<64;10;10M');
+  await sleep(20);
+}
 await sleep(400);
 console.log('--- after wheel up ---\n' + io.screen());
 process.exit(0);

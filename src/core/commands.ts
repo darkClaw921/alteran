@@ -51,6 +51,7 @@ const BUILTIN: SlashCommandInfo[] = [
   { name: 'agents', description: 'List available subagents', origin: 'builtin' },
   { name: 'plugins', description: 'List loaded plugins', origin: 'builtin' },
   { name: 'status', description: 'Session, model, context and token usage', origin: 'builtin' },
+  { name: 'budget', description: 'Session spend limit and what it has used', hint: '[reset]', origin: 'builtin' },
   { name: 'context', description: 'What the context window is spent on', origin: 'builtin' },
   { name: 'init', description: 'Create ALTERAN.md with codebase guidance', origin: 'builtin' },
   { name: 'diff', description: 'Show working tree diff', origin: 'builtin' },
@@ -138,7 +139,11 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
     case 'plan':
       rt.setMode('plan');
       return args
-        ? { kind: 'prompt', text: `${args}\n\nInvestigate and produce an implementation plan organized by phases, then call ExitPlanMode.` , display: `/plan ${args}` }
+        ? {
+            kind: 'prompt',
+            text: `${args}\n\nInvestigate and produce an implementation plan organized by phases, then call ExitPlanMode.`,
+            display: `/plan ${args}`,
+          }
         : { kind: 'info', text: 'Plan mode ON: read-only investigation. Describe the task; the plan will be offered for approval.' };
 
     case 'mode': {
@@ -159,7 +164,15 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
         rt.setModel(spec);
         updateUserSettings({ model: rt.model.id });
         // "@a,b" pins a priority list; "@auto" clears it.
-        if (at > 0) rt.setRoute(upstream === 'auto' ? [] : upstream.split(',').map((u) => u.trim()).filter(Boolean));
+        if (at > 0)
+          rt.setRoute(
+            upstream === 'auto'
+              ? []
+              : upstream
+                  .split(',')
+                  .map((u) => u.trim())
+                  .filter(Boolean),
+          );
         const route = rt.registry.route(rt.model);
         return { kind: 'info', text: `Model set to ${rt.model.id}${route ? ` via ${route.join(', ')}` : ''} (saved as default)` };
       } catch (e) {
@@ -228,6 +241,31 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
       };
     }
 
+    case 'budget': {
+      const b = rt.budget;
+      const u = rt.sessionUsage();
+      const usedTokens = u.inputTokens + u.cacheReadTokens + u.cacheWriteTokens + u.outputTokens;
+      if (args === 'reset') {
+        rt.resetBudget();
+        return { kind: 'info', text: 'Budget restarted from what has been spent so far. The session total keeps counting.' };
+      }
+      const limits = [
+        b.tokens !== undefined ? `${b.tokens.toLocaleString('en-US')} tokens` : '',
+        b.cost !== undefined ? fmtMoney(b.cost, u.currency) : '',
+      ].filter(Boolean);
+      return {
+        kind: 'info',
+        text: [
+          `Budget: ${limits.length ? limits.join(' or ') : 'none configured'}${b.onExceed === 'stop' ? ' — stops the session at the limit' : ' — warns at the limit'}`,
+          `Used: ${usedTokens.toLocaleString('en-US')} tokens${u.cost ? `, ${fmtMoney(u.cost, u.currency)}` : ''}`,
+          limits.length ? '' : 'Set `budget.tokens` or `budget.cost` in settings.json to cap a session.',
+          '/budget reset starts the limit over from here; the session total keeps counting.',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      };
+    }
+
     case 'iris': {
       const r = rt.permissions.rules;
       return {
@@ -248,20 +286,30 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
       if (args.startsWith('reconnect')) {
         const nameArg = args.split(/\s+/)[1];
         if (!nameArg) return { kind: 'error', text: 'Usage: /mcp reconnect <server>' };
-        return { kind: 'task', label: `Reconnecting ${nameArg}`, run: async () => (await rt.mcp.reconnect(nameArg), `${nameArg}: ${rt.mcp.servers.get(nameArg)?.status}`) };
+        return {
+          kind: 'task',
+          label: `Reconnecting ${nameArg}`,
+          run: async () => (await rt.mcp.reconnect(nameArg), `${nameArg}: ${rt.mcp.servers.get(nameArg)?.status}`),
+        };
       }
       const rows = [...rt.mcp.servers.values()].map(
-        (s) => `${s.status === 'connected' ? '[#]' : s.status === 'pending' ? '[/]' : '[ ]'} ${s.def.name.padEnd(28)} ${s.status.padEnd(10)} ${s.tools.length} tools  (${s.def.origin})${s.error ? `  ${s.error}` : ''}`,
+        (s) =>
+          `${s.status === 'connected' ? '[#]' : s.status === 'pending' ? '[/]' : '[ ]'} ${s.def.name.padEnd(28)} ${s.status.padEnd(10)} ${s.tools.length} tools  (${s.def.origin})${s.error ? `  ${s.error}` : ''}`,
       );
       return { kind: 'info', text: rows.length ? rows.join('\n') : 'No MCP servers configured' };
     }
 
     case 'skills':
-      return { kind: 'info', text: [...rt.ext.skills.values()].map((s) => `${s.name}  (${s.origin})\n    ${s.description.slice(0, 150)}`).join('\n') || 'No skills' };
+      return {
+        kind: 'info',
+        text: [...rt.ext.skills.values()].map((s) => `${s.name}  (${s.origin})\n    ${s.description.slice(0, 150)}`).join('\n') || 'No skills',
+      };
     case 'agents':
       return {
         kind: 'info',
-        text: [...rt.ext.agents.values()].map((a) => `${a.name}  (${a.origin}${a.model ? `, model ${a.model}` : ''})\n    ${a.description.replace(/\s+/g, ' ').slice(0, 150)}`).join('\n'),
+        text: [...rt.ext.agents.values()]
+          .map((a) => `${a.name}  (${a.origin}${a.model ? `, model ${a.model}` : ''})\n    ${a.description.replace(/\s+/g, ' ').slice(0, 150)}`)
+          .join('\n'),
       };
     case 'schedule': {
       const items = rt.schedule.list();
@@ -303,7 +351,15 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
     case 'tasks': {
       const store = tracker(rt);
       if (!store) return { kind: 'info', text: 'No tracker in this project yet. Plan work with /plan, approve it, and tasks will be created.' };
-      if (name === 'phases') return { kind: 'info', text: store.epics().map((e) => epicLine(e)).join('\n') || 'No phases yet' };
+      if (name === 'phases')
+        return {
+          kind: 'info',
+          text:
+            store
+              .epics()
+              .map((e) => epicLine(e))
+              .join('\n') || 'No phases yet',
+        };
       if (args) {
         const e = store.findPhase(args);
         if (!e) return { kind: 'error', text: `Phase "${args}" not found` };
@@ -341,7 +397,14 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
       const store = tracker(rt);
       if (!store) return { kind: 'error', text: 'No tracker in this project. Create tasks first (/plan → approve, or /create-tasks).' };
       const epic = store.findPhase(args);
-      if (!epic) return { kind: 'error', text: `Phase "${args}" not found. Phases:\n${store.epics().map((e) => epicLine(e)).join('\n')}` };
+      if (!epic)
+        return {
+          kind: 'error',
+          text: `Phase "${args}" not found. Phases:\n${store
+            .epics()
+            .map((e) => epicLine(e))
+            .join('\n')}`,
+        };
       const n = TrackerStore.phaseNumber(epic);
       if (n !== undefined) {
         const earlier = store.epics().filter((e) => {
@@ -365,7 +428,19 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
             parent: rt.main,
             signal,
           });
-          rt.main.pendingContext.push(`The run-phase agent finished "${epic.title}". Its report:\n${report}`);
+          // Chaining is the point: a phased run that stops after one phase to ask "shall I go on?"
+          // makes the user drive the loop by hand.
+          // Re-read: the agent closed tasks while it ran, so the copy taken before the run is stale.
+          const fresh = store.findPhase(epic.id);
+          const left = store.epics().filter((e) => e.epic.id !== epic.id && !isClosedStatus(e.epic.status));
+          const next =
+            fresh && !isClosedStatus(fresh.status)
+              ? // Moving on would hand the next phase work that still rests on this one.
+                `\n\n${epic.title} is still open. Finish it before anything else: find what is left with tasks_ready and see it through, without asking the user whether to continue.`
+              : left.length
+                ? `\n\nStill open: ${left.map((e) => `${e.epic.id} ${e.epic.title}`).join(', ')}. Start the next of these now — launch the run-phase agent for it with Task — without asking the user whether to continue.`
+                : '\n\nEvery phase is closed.';
+          rt.main.pendingContext.push(`The run-phase agent finished "${epic.title}". Its report:\n${report}${next}`);
           return report;
         },
       };

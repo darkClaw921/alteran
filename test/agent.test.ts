@@ -7,10 +7,12 @@ import { Runtime } from '../src/core/runtime.js';
 import { parseDuration } from '../src/core/schedule.js';
 import { cacheLine, contextBar, contextBreakdown, formatContext } from '../src/core/context.js';
 import { runSlashCommand } from '../src/core/commands.js';
+import { TrackerStore } from '../src/tracker/store.js';
 import { mainSystemPrompt } from '../src/core/prompt.js';
 import { SessionStore } from '../src/core/session.js';
-import type { ProviderRequest, StreamEvent } from '../src/types.js';
-import { ok } from '../src/tools/types.js';
+import { emptyUsage, type ProviderRequest, type StreamEvent } from '../src/types.js';
+import { runShell } from '../src/tools/bash.js';
+import { ok, type Tool } from '../src/tools/types.js';
 
 const dirs = useTempDirs('agent');
 const makeRuntime = (turns: StreamEvent[][], mode: 'autonomous' | 'default' | 'plan' = 'autonomous') => scriptedRuntime(dirs, turns, mode);
@@ -61,6 +63,55 @@ describe('sessions', () => {
     expect(messages).toHaveLength(4);
     expect(SessionStore.list(second.rt.root).map((x) => x.id)).toContain(id);
   });
+
+  it('brings the spend along when a session is resumed', async () => {
+    const { rt } = await makeRuntime([textTurn('first answer')]);
+    await rt.main.send('hello', new AbortController().signal);
+    const spent = rt.sessionUsage();
+    expect(spent.outputTokens).toBeGreaterThan(0);
+
+    // A fresh process resuming by id: the meter carries on rather than restarting at zero.
+    const later = await Runtime.create({ cwd: dirs.dir, mode: 'autonomous', noMcp: true, model: 'ollama:test', resume: rt.session.id });
+    expect(later.sessionUsage().outputTokens).toBe(spent.outputTokens);
+    expect(later.sessionUsage().inputTokens).toBe(spent.inputTokens);
+
+    // And resuming it from inside another running session adopts that session's spend, not both.
+    const other = await makeRuntime([textTurn('elsewhere')]);
+    await other.rt.main.send('unrelated', new AbortController().signal);
+    other.rt.resumeSession(rt.session.file);
+    expect(other.rt.sessionUsage().outputTokens).toBe(spent.outputTokens);
+  }, 20000);
+
+  it('survives a transcript written before spend was recorded', async () => {
+    const { rt } = await makeRuntime([textTurn('ok')]);
+    await rt.main.send('hello', new AbortController().signal);
+    // An older session: messages, no usage line, plus a line this version cannot parse at all.
+    const stripped = fs
+      .readFileSync(rt.session.file, 'utf8')
+      .split('\n')
+      .filter((l) => l && !l.includes('"type":"usage"'))
+      .concat('{not json', '{"type":"usage"')
+      .join('\n');
+    fs.writeFileSync(rt.session.file, stripped + '\n');
+
+    const later = await Runtime.create({ cwd: dirs.dir, mode: 'autonomous', noMcp: true, model: 'ollama:test', resume: rt.session.id });
+    expect(later.sessionUsage().outputTokens).toBe(0);
+    expect(later.main.messages).toHaveLength(2);
+  }, 20000);
+
+  it('keeps the spend across a cleared conversation', async () => {
+    const { rt } = await makeRuntime([textTurn('one'), textTurn('two')]);
+    await rt.main.send('hello', new AbortController().signal);
+    const before = rt.sessionUsage().outputTokens;
+    rt.session.reset('clear');
+    rt.main.messages = [];
+    await rt.main.send('fresh start', new AbortController().signal);
+
+    // The money was spent whatever happened to the transcript, so resuming must not forget it.
+    const later = await Runtime.create({ cwd: dirs.dir, mode: 'autonomous', noMcp: true, model: 'ollama:test', resume: rt.session.id });
+    expect(later.sessionUsage().outputTokens).toBeGreaterThan(before);
+    expect(later.main.messages).toHaveLength(2);
+  }, 20000);
 
   it('resolves /resume by id prefix', async () => {
     const { rt } = await makeRuntime([textTurn('ok')]);
@@ -158,7 +209,11 @@ describe('agent loop', () => {
     await rt.main.send('plan it', new AbortController().signal);
     const jsonl = path.join(dir(), '.beads', 'issues.jsonl');
     expect(fs.existsSync(jsonl)).toBe(true);
-    const created = fs.readFileSync(jsonl, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const created = fs
+      .readFileSync(jsonl, 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
     expect(created.some((i) => i.title === 'Phase 1: Core' && i.issue_type === 'epic')).toBe(true);
     const results = provider.requests.at(-1)!.messages.flatMap((m) => m.content.filter((b) => b.type === 'tool_result'));
     expect(JSON.stringify(results[0])).toContain('Created');
@@ -200,7 +255,14 @@ describe('agent loop', () => {
   it('delivers a background report to an orchestrator that has gone idle', async () => {
     const { rt, provider } = await makeRuntime([]);
     provider.turns.push(textTurn('found three things'), textTurn('relayed'));
-    const run = rt.agents.spawn({ agentType: 'general-purpose', description: 'scan', prompt: 'scan', parent: rt.main, signal: new AbortController().signal, background: true });
+    const run = rt.agents.spawn({
+      agentType: 'general-purpose',
+      description: 'scan',
+      prompt: 'scan',
+      parent: rt.main,
+      signal: new AbortController().signal,
+      background: true,
+    });
     await run.turn;
     // Nothing was running when it finished, so the report waits for the orchestrator's next turn.
     expect(rt.main.pendingContext.join('\n')).toContain('found three things');
@@ -272,11 +334,7 @@ describe('agent loop', () => {
 
   it('stops one agent without touching the others', async () => {
     const { rt, provider } = await makeRuntime([]);
-    provider.turns.push(
-      toolTurn('x1', 'Read', { file_path: 'nope.txt' }),
-      toolTurn('y1', 'Read', { file_path: 'nope.txt' }),
-      textTurn('survivor'),
-    );
+    provider.turns.push(toolTurn('x1', 'Read', { file_path: 'nope.txt' }), toolTurn('y1', 'Read', { file_path: 'nope.txt' }), textTurn('survivor'));
     const ac = new AbortController();
     const req = { agentType: 'general-purpose', description: 'a', prompt: 'work', parent: rt.main, signal: ac.signal, background: true };
     const doomed = rt.agents.spawn(req);
@@ -315,6 +373,71 @@ describe('agent loop', () => {
     expect(fs.readFileSync(file, 'utf8')).toContain('remember this');
     const rt2 = await Runtime.create({ cwd: dir(), noMcp: true, model: 'ollama:test', resume: 'last' });
     expect(JSON.stringify(rt2.main.messages)).toContain('remember this');
+  });
+});
+
+describe('phased execution', () => {
+  /** Run `/run-phase <id>`, optionally closing the phase's work while the "agent" is busy. */
+  const runPhase = async (rt: Runtime, arg: string, duringRun?: () => void) => {
+    const cmd = await runSlashCommand(rt, `/run-phase ${arg}`);
+    expect(cmd.kind).toBe('task');
+    duringRun?.();
+    await (cmd as { run: (s: AbortSignal) => Promise<unknown> }).run(new AbortController().signal);
+    return rt.main.pendingContext.join('\n');
+  };
+
+  it('points at the next open phase instead of handing the loop back to the user', async () => {
+    const store = TrackerStore.init(dirs.dir, 'demo');
+    const one = store.create({ title: 'Phase 1: Ядро', type: 'epic' });
+    store.create({ title: 'Phase 2: TUI', type: 'epic' });
+    const task = store.create({ title: 'task', parent: one.id });
+
+    const { rt } = await makeRuntime([textTurn('phase one done')]);
+    const handover = await runPhase(rt, '1', () => {
+      store.close(task.id, 'done');
+      store.close(one.id, 'done');
+    });
+    expect(handover).toContain('phase one done');
+    expect(handover).toContain('Phase 2: TUI');
+    expect(handover).toContain('without asking the user');
+  }, 20000);
+
+  it('says the work is over when no phase is left', async () => {
+    const store = TrackerStore.init(dirs.dir, 'demo');
+    const only = store.create({ title: 'Phase 1: Ядро', type: 'epic' });
+    const task = store.create({ title: 'task', parent: only.id });
+
+    const { rt } = await makeRuntime([textTurn('done')]);
+    const handover = await runPhase(rt, '1', () => {
+      store.close(task.id, 'done');
+      store.close(only.id, 'done');
+    });
+    expect(handover).toContain('Every phase is closed.');
+  }, 20000);
+
+  it('sends it back to an unfinished phase rather than on to the next one', async () => {
+    const store = TrackerStore.init(dirs.dir, 'demo');
+    const one = store.create({ title: 'Phase 1: Ядро', type: 'epic' });
+    store.create({ title: 'Phase 2: TUI', type: 'epic' });
+    store.create({ title: 'task nobody closed', parent: one.id });
+
+    const { rt } = await makeRuntime([textTurn('ran out of ideas')]);
+    const handover = await runPhase(rt, '1');
+    expect(handover).toContain('Phase 1: Ядро is still open');
+    expect(handover).not.toContain('Phase 2: TUI');
+  }, 20000);
+
+  it('refuses a phase whose predecessors still have open tasks', async () => {
+    const store = TrackerStore.init(dirs.dir, 'demo');
+    const one = store.create({ title: 'Phase 1: Ядро', type: 'epic' });
+    const two = store.create({ title: 'Phase 2: TUI', type: 'epic' });
+    store.create({ title: 'unfinished', parent: one.id });
+    store.create({ title: 'later', parent: two.id });
+
+    const { rt } = await makeRuntime([]);
+    const res = await runSlashCommand(rt, '/run-phase 2');
+    expect(res.kind).toBe('error');
+    expect((res as { text: string }).text).toContain('unfinished');
   });
 });
 
@@ -395,7 +518,14 @@ describe('deferred work', () => {
   it('delivers a scheduled message to a finished agent', async () => {
     const { rt, provider } = await makeRuntime([]);
     provider.turns.push(textTurn('first pass'), textTurn('second pass'));
-    const run = rt.agents.spawn({ agentType: 'general-purpose', description: 'a', prompt: 'look', parent: rt.main, signal: new AbortController().signal, background: true });
+    const run = rt.agents.spawn({
+      agentType: 'general-purpose',
+      description: 'a',
+      prompt: 'look',
+      parent: rt.main,
+      signal: new AbortController().signal,
+      background: true,
+    });
     await run.turn;
     const woken: string[] = [];
     rt.onWake = (_id, text) => woken.push(text);
@@ -457,7 +587,12 @@ describe('deferred work', () => {
     const theirs = rt.schedule.create({ kind: 'prompt', in: '1h', message: 'agent item', owner: 'agent-1', ownerName: 'Explore-1' });
     expect(rt.schedule.list('agent-1').map((i) => i.id)).toEqual([theirs.id]);
     // The orchestrator oversees everything; an agent sees only what it set up.
-    expect(rt.schedule.list('main').map((i) => i.id).sort()).toEqual([mine.id, theirs.id].sort());
+    expect(
+      rt.schedule
+        .list('main')
+        .map((i) => i.id)
+        .sort(),
+    ).toEqual([mine.id, theirs.id].sort());
     expect(() => rt.schedule.cancel(mine.id, 'agent-1')).toThrow(/No scheduled item/);
     expect(rt.schedule.cancel(theirs.id, 'agent-1').state).toBe('cancelled');
   });
@@ -492,6 +627,234 @@ describe('deferred work', () => {
   });
 });
 
+describe('tool execution limits', () => {
+  /** Swap in a probe tool so a test can hold calls open and watch how they are run. */
+  function addProbe(rt: Runtime, tool: Tool<any>) {
+    const all = rt.allTools.bind(rt);
+    (rt as unknown as { allTools: () => Tool<any>[] }).allTools = () => [...all(), tool];
+  }
+
+  /** One assistant turn that asks for the same tool n times over. */
+  const manyCalls = (name: string, n: number): StreamEvent[] => [
+    {
+      type: 'done',
+      message: {
+        role: 'assistant',
+        content: Array.from({ length: n }, (_, i) => ({ type: 'tool_use' as const, id: `${name}-${i}`, name, input: {} })),
+      },
+      stopReason: 'tool_use',
+      usage: emptyUsage(),
+    },
+  ];
+
+  const resultBlocks = (provider: ScriptedProvider) => provider.requests.at(-1)!.messages.flatMap((m) => m.content.filter((b) => b.type === 'tool_result'));
+
+  it('caps how many read-only calls run at once', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    let active = 0;
+    let peak = 0;
+    addProbe(rt, {
+      name: 'Probe',
+      description: 'probe',
+      category: 'read',
+      readOnly: true,
+      jsonSchema: { type: 'object' },
+      summarize: () => '',
+      async run() {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise((r) => setTimeout(r, 15));
+        active--;
+        return ok('pong');
+      },
+    });
+    provider.turns.push(manyCalls('Probe', 20), textTurn('done'));
+    await rt.main.send('probe', new AbortController().signal);
+    // Parallel, but never wider than the cap; every call still gets its own result.
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(8);
+    expect(resultBlocks(provider)).toHaveLength(20);
+  });
+
+  it('fails a call that outstays its timeout without stalling the batch', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    addProbe(rt, {
+      name: 'Hang',
+      description: 'never returns on its own',
+      category: 'read',
+      readOnly: true,
+      timeoutMs: 40,
+      jsonSchema: { type: 'object' },
+      summarize: () => '',
+      run: (_input, ctx) =>
+        new Promise((_resolve, reject) => {
+          ctx.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        }),
+    });
+    provider.turns.push(manyCalls('Hang', 2), textTurn('done'));
+    await rt.main.send('hang', new AbortController().signal);
+    const results = resultBlocks(provider);
+    expect(results).toHaveLength(2);
+    for (const r of results) expect(String(r.content)).toContain('timed out');
+  });
+});
+
+describe('shell working directory', () => {
+  it('keeps a foreground cd, but a deferred run leaves it alone', async () => {
+    const { rt } = await makeRuntime([]);
+    const sub = path.join(dir(), 'sub');
+    fs.mkdirSync(sub, { recursive: true });
+    await runShell(rt, `cd ${sub}`, {});
+    expect(fs.realpathSync(rt.cwd)).toBe(fs.realpathSync(sub));
+    // Deferred work runs as the agent but must not move the directory the user is working in.
+    await rt.main.runDirect('Bash', { command: `cd ${dir()}` }, new AbortController().signal);
+    expect(fs.realpathSync(rt.cwd)).toBe(fs.realpathSync(sub));
+  });
+
+  it('does not let a slow shell undo a newer move', async () => {
+    const { rt } = await makeRuntime([]);
+    const x = path.join(dir(), 'x');
+    const y = path.join(dir(), 'y');
+    fs.mkdirSync(x, { recursive: true });
+    fs.mkdirSync(y, { recursive: true });
+    const slow = runShell(rt, `sleep 0.2; cd ${x}`, {});
+    await runShell(rt, `cd ${y}`, {});
+    await slow;
+    // The first shell started before the move and finished after it; its `pwd` is stale.
+    expect(fs.realpathSync(rt.cwd)).toBe(fs.realpathSync(y));
+  });
+});
+
+describe('microcompaction', () => {
+  function writeSettings(settings: unknown) {
+    fs.mkdirSync(path.join(dir(), '.alteran'), { recursive: true });
+    fs.writeFileSync(path.join(dir(), '.alteran', 'settings.json'), JSON.stringify(settings));
+  }
+
+  /** A tool turn whose prompt is large enough to push the window over a trimming threshold. */
+  const heavyTurn = (id: string, inputTokens: number): StreamEvent[] => [
+    { type: 'tool_use_start', id, name: 'Read' },
+    {
+      type: 'done',
+      message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Read', input: { file_path: 'big.txt' } }] },
+      stopReason: 'tool_use',
+      usage: { inputTokens, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    },
+  ];
+
+  it('elides old tool results, keeps the recent ones and leaves every call paired', async () => {
+    // A 2k window trimmed from 50%: the trigger sits well below the full-compaction threshold.
+    writeSettings({
+      providers: { ollama: { type: 'openai-compat', models: { test: { contextWindow: 2000 } } } },
+      microcompact: { keepRecent: 1, threshold: 0.5 },
+    });
+    fs.writeFileSync(path.join(dir(), 'big.txt'), 'x'.repeat(400));
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(heavyTurn('a', 1100), heavyTurn('b', 1100), textTurn('done'));
+    await rt.main.send('read it twice', new AbortController().signal);
+
+    const messages = provider.requests.at(-1)!.messages;
+    const results = messages.flatMap((m) => m.content.filter((b) => b.type === 'tool_result'));
+    expect(results).toHaveLength(2);
+    expect(String(results[0].content)).toContain('elided');
+    expect(String(results[1].content)).toContain('xxxx');
+    // Eliding rewrites content in place, so no call is left without its answer.
+    const uses = messages.flatMap((m) => m.content.filter((b) => b.type === 'tool_use')).map((b) => b.id);
+    expect(uses).toHaveLength(2);
+    expect(results.map((r) => r.toolUseId)).toEqual(uses);
+  });
+
+  it('leaves history byte-identical until the saving is worth the cache it costs', async () => {
+    const { rt } = await makeRuntime([]);
+    const stale = (n: number) => ({ role: 'user' as const, content: [{ type: 'tool_result' as const, toolUseId: `t${n}`, content: 'x'.repeat(2000) }] });
+    // Default window is 200k tokens, so the floor is ~4k tokens: a handful of results is under it.
+    rt.main.messages = [stale(1), stale(2), stale(3)];
+    const before = JSON.stringify(rt.main.messages);
+    rt.settings.microcompact = { keepRecent: 0 };
+    expect(rt.main.microcompact()).toBe(0);
+    expect(JSON.stringify(rt.main.messages)).toBe(before);
+
+    // Enough to matter: now it takes everything stale in one rewrite rather than a little each turn.
+    rt.main.messages = Array.from({ length: 12 }, (_, i) => stale(i));
+    expect(rt.main.microcompact()).toBeGreaterThan(0);
+    const left = rt.main.messages.flatMap((m) => m.content).filter((b) => b.type === 'tool_result' && String(b.content).includes('xxxx'));
+    expect(left).toHaveLength(0);
+    // A second pass finds nothing new, so the prefix stops moving.
+    expect(rt.main.microcompact()).toBe(0);
+  });
+
+  it('leaves a history whose results are all still recent alone', async () => {
+    const { rt } = await makeRuntime([]);
+    rt.main.messages = [{ role: 'user', content: [{ type: 'tool_result', toolUseId: 'a', content: 'x'.repeat(500) }] }];
+    expect(rt.main.microcompact()).toBe(0);
+  });
+});
+
+describe('session budget', () => {
+  function writeSettings(settings: unknown) {
+    fs.mkdirSync(path.join(dir(), '.alteran'), { recursive: true });
+    fs.writeFileSync(path.join(dir(), '.alteran', 'settings.json'), JSON.stringify(settings));
+  }
+
+  it('warns once when the session passes its token limit', async () => {
+    writeSettings({ budget: { tokens: 10 } });
+    const { rt, events } = await makeRuntime([textTurn('one'), textTurn('two')]);
+    await rt.main.send('first', new AbortController().signal);
+    await rt.main.send('second', new AbortController().signal);
+    const notices = events.filter((e) => e.type === 'notice' && e.text.includes('Session budget reached'));
+    expect(notices).toHaveLength(1);
+  });
+
+  it('stops the turn and refuses the next one when onExceed is stop', async () => {
+    writeSettings({ budget: { tokens: 10, onExceed: 'stop' } });
+    const { rt, provider } = await makeRuntime([textTurn('one'), textTurn('two')]);
+    await rt.main.send('first', new AbortController().signal);
+    const out = await rt.main.send('second', new AbortController().signal);
+    expect(out).toContain('session budget reached');
+    // The limit is checked before the model is called, so the second request never leaves.
+    expect(provider.requests).toHaveLength(1);
+  });
+
+  it('lets a cleared conversation carry on without forgetting what it cost', async () => {
+    writeSettings({ budget: { tokens: 10, onExceed: 'stop' } });
+    const { rt } = await makeRuntime([textTurn('one'), textTurn('two')]);
+    await rt.main.send('first', new AbortController().signal);
+    const spent = rt.sessionUsage();
+    expect(rt.budgetCheck().state).toBe('stop');
+
+    rt.clearConversation();
+    // The limit starts over from here — otherwise the advice in the stop notice would be a lie.
+    expect(rt.budgetCheck().state).toBe('ok');
+    // The money is still spent, and a session that forgets that cannot report what it cost.
+    expect(rt.sessionUsage().outputTokens).toBe(spent.outputTokens);
+    expect(rt.sessionUsage().inputTokens).toBe(spent.inputTokens);
+
+    // And the next turn really runs.
+    await rt.main.send('second', new AbortController().signal);
+    expect(rt.sessionUsage().outputTokens).toBeGreaterThan(spent.outputTokens);
+  }, 20000);
+
+  it('counts a resumed session against the whole limit again', async () => {
+    writeSettings({ budget: { tokens: 10, onExceed: 'stop' } });
+    const { rt } = await makeRuntime([textTurn('one')]);
+    await rt.main.send('first', new AbortController().signal);
+    const file = rt.session.file;
+
+    const fresh = await makeRuntime([textTurn('elsewhere')]);
+    fresh.rt.resumeSession(file);
+    // Spend carried over, so a session already past its limit is still past it after a resume.
+    expect(fresh.rt.budgetCheck().state).toBe('stop');
+  }, 20000);
+
+  it('leaves a session with no budget alone', async () => {
+    const { rt, events } = await makeRuntime([textTurn('one'), textTurn('two')]);
+    await rt.main.send('first', new AbortController().signal);
+    await rt.main.send('second', new AbortController().signal);
+    expect(events.some((e) => e.type === 'notice' && e.text.includes('Session budget'))).toBe(false);
+    expect(rt.budgetCheck().state).toBe('ok');
+  });
+});
+
 describe('prompt cache', () => {
   /**
    * Caching is a prefix match: tools render first, then system, then messages. A request may only
@@ -512,11 +875,7 @@ describe('prompt cache', () => {
 
   it('only ever appends to the prefix across a tool loop', async () => {
     const { rt, provider } = await makeRuntime([]);
-    provider.turns.push(
-      toolTurn('t1', 'Read', { file_path: 'nope.txt' }),
-      toolTurn('t2', 'Glob', { pattern: '*.ts' }),
-      textTurn('done'),
-    );
+    provider.turns.push(toolTurn('t1', 'Read', { file_path: 'nope.txt' }), toolTurn('t2', 'Glob', { pattern: '*.ts' }), textTurn('done'));
     await rt.main.send('look around', new AbortController().signal);
     expect(provider.requests.length).toBe(3);
     expectStablePrefix(provider.requests);
@@ -602,7 +961,14 @@ describe('prompt cache', () => {
   it('holds the tool roster still while a turn is in flight', async () => {
     const { rt, provider } = await makeRuntime([]);
     provider.turns.push(toolTurn('t1', 'Read', { file_path: 'nope.txt' }), textTurn('ok'));
-    const extra = { name: 'mcp__late__thing', description: 'arrives mid-turn', category: 'mcp' as const, readOnly: true, jsonSchema: { type: 'object', properties: {} }, run: async () => ok('') };
+    const extra = {
+      name: 'mcp__late__thing',
+      description: 'arrives mid-turn',
+      category: 'mcp' as const,
+      readOnly: true,
+      jsonSchema: { type: 'object', properties: {} },
+      run: async () => ok(''),
+    };
     // A server that finishes connecting mid-turn must not rewrite the prefix under the model.
     rt.mcp.tools = () => [extra];
     await rt.main.send('go', new AbortController().signal);

@@ -163,7 +163,7 @@ Session 9830989d saved — 12 messages.
 
 ## Команды
 
-`/help`, `/plan`, `/create-tasks`, `/run-phase N`, `/schedule`, `/phases`, `/tasks`, `/mode`, `/iris`, `/model`, `/models`, `/context`, `/copy`, `/bare`, `/mouse`, `/reasoning`, `/compact`, `/clear`, `/resume`, `/mcp`, `/skills`, `/agents`, `/plugins`, `/status`, `/init`, `/diff`, `/exit` — плюс все команды и скиллы, найденные в Claude Code, Codex и плагинах.
+`/help`, `/plan`, `/create-tasks`, `/run-phase N`, `/schedule`, `/phases`, `/tasks`, `/mode`, `/iris`, `/model`, `/models`, `/context`, `/copy`, `/bare`, `/mouse`, `/reasoning`, `/compact`, `/budget`, `/clear`, `/resume`, `/mcp`, `/skills`, `/agents`, `/plugins`, `/status`, `/init`, `/diff`, `/exit` — плюс все команды и скиллы, найденные в Claude Code, Codex и плагинах.
 
 CLI: `alteran tasks …`, `alteran models [provider] [фильтр]`, `alteran mcp [list|test]`, `alteran skills|agents|plugins|commands`, `alteran sessions`, `alteran doctor`.
 
@@ -186,6 +186,8 @@ CLI: `alteran tasks …`, `alteran models [provider] [фильтр]`, `alteran m
     "deny": ["Bash(rm -rf:*)"]
   },
   "agents": { "maxDepth": 2, "maxConcurrent": 8 },
+  "budget": { "tokens": 2000000, "cost": 5, "onExceed": "warn" },
+  "microcompact": { "keepRecent": 8, "threshold": 0.6 },
   "cache": { "ttl": "1h" },
   "theme": "dark",
   "panels": false,
@@ -200,12 +202,15 @@ CLI: `alteran tasks …`, `alteran models [provider] [фильтр]`, `alteran m
 
 ```bash
 pnpm dev -- -p "привет"    # запуск из исходников
+pnpm lint                  # biome: то же, что проверяет CI
 pnpm typecheck
-pnpm test                  # 107 тестов: трекер (+ interop с br), права, совместимость,
-                           # агентный цикл, оркестрация, кеш промпта, каталог моделей, TUI
+pnpm test                  # трекер (+ interop с br), права, совместимость, хуки,
+                           # агентный цикл, бюджеты, кеш промпта, каталог моделей, TUI
 pnpm test:sandbox          # краевые случаи работы агента — в одноразовом контейнере
 ```
 
+CI — три workflow: `ci.yml` на каждый push и pull request (lint → typecheck → test → build на Node 22 и 24), `sandbox.yml` прогоняет контейнерный набор по ночам и по требованию, `publish.yml` повторяет проверки перед публикацией по тегу `v*`. Контейнерный набор намеренно не висит на pull request'ах, чтобы быстрый пайплайн не ждал сборку образа.
+
 Краевые случаи агента живут отдельно, в `test/sandbox/`, и запускаются только в контейнере. Часть из них существует ровно затем, чтобы доказать: отложенная команда, запрещённая правами, **не выполняется**, а команда, которой нужно подтверждение, когда спросить некого, падает, а не проходит. Регрессия в этом коде должна стоить контейнера, а не рабочего дерева. Набор отказывается стартовать вне песочницы.
 
-Архитектура — в [ALTERAN.md](ALTERAN.md); макет интерфейса — `design/altera-terminal.html`; герой этого файла собирается скриптом `scripts/hero.ts` в `assets/hero.svg`.
+Архитектура — в [ALTERAN.md](ALTERAN.md); как участвовать — [CONTRIBUTING.md](CONTRIBUTING.md); история версий — [CHANGELOG.md](CHANGELOG.md); про уязвимости и модель доверия — [SECURITY.md](SECURITY.md); макет интерфейса — `design/altera-terminal.html`; герой этого файла собирается скриптом `scripts/hero.ts` в `assets/hero.svg`.

@@ -171,9 +171,7 @@ export class McpManager {
     const s = this.servers.get(server);
     if (!s?.client) throw new Error(`MCP server ${server} not connected`);
     const res = await s.client.getPrompt({ name: prompt, arguments: args });
-    return res.messages
-      .map((m) => (m.content.type === 'text' ? m.content.text : `[${m.content.type}]`))
-      .join('\n\n');
+    return res.messages.map((m) => (m.content.type === 'text' ? m.content.text : `[${m.content.type}]`)).join('\n\n');
   }
 
   async listResources(server?: string) {
@@ -221,7 +219,11 @@ function convertResult(res: { content?: unknown[]; isError?: boolean; structured
   if (!parts.length && res.structuredContent) parts.push({ type: 'text', text: JSON.stringify(res.structuredContent, null, 2) });
   if (!parts.length) parts.push({ type: 'text', text: '(empty result)' });
   const firstText = parts.find((p) => p.type === 'text') as { text: string } | undefined;
-  const summary = firstText?.text.split('\n').find((l) => l.trim())?.slice(0, 140) ?? 'Done';
+  const summary =
+    firstText?.text
+      .split('\n')
+      .find((l) => l.trim())
+      ?.slice(0, 140) ?? 'Done';
   const out = ok(parts, { summary, lines: firstText?.text.split('\n').slice(0, 30) });
   if (res.isError) out.isError = true;
   return out;

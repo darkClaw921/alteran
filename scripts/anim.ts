@@ -9,7 +9,14 @@ const { io } = await launch({ cwd: dir, model: 'ollama:test' }, 120, 30);
 for (let i = 0; i < 4; i++) {
   await sleep(700);
   console.log(`--- frame ${i} ---`);
-  console.log(io.screen().split('\n').slice(2, 17).map((l) => l.slice(0, 40)).join('\n'));
+  console.log(
+    io
+      .screen()
+      .split('\n')
+      .slice(2, 17)
+      .map((l) => l.slice(0, 40))
+      .join('\n'),
+  );
 }
 fs.rmSync(dir, { recursive: true, force: true });
 process.exit(0);

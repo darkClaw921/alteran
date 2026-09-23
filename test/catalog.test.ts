@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModelCatalog, filterModels, fmtContext, fmtMoney, fmtPrice } from '../src/providers/catalog.js';
 import { ProviderRegistry } from '../src/providers/registry.js';
 import { OpenAICompatProvider } from '../src/providers/openai-compat.js';
+import type { Usage } from '../src/types.js';
 
 let home: string;
 
@@ -31,7 +32,12 @@ const POLZA_MODEL = {
   id: 'deepseek/deepseek-v4.1-flash',
   providers: [
     { name: 'deepseek', context_length: 1_048_576, pricing: { prompt_per_million: '17.69880000', completion_per_million: '70.79520000', currency: 'RUB' } },
-    { name: 'cloud-ru', context_length: 1_048_576, stores_data_in_russia: true, pricing: { prompt_per_million: '90.91600000', completion_per_million: '272.73400000', currency: 'RUB' } },
+    {
+      name: 'cloud-ru',
+      context_length: 1_048_576,
+      stores_data_in_russia: true,
+      pricing: { prompt_per_million: '90.91600000', completion_per_million: '272.73400000', currency: 'RUB' },
+    },
   ],
 };
 
@@ -60,7 +66,8 @@ afterEach(() => {
 });
 
 describe('model catalog', () => {
-  const registry = () => new ProviderRegistry({ providers: { polza: { type: 'openai-compat', apiKey: 'k' }, openrouter: { type: 'openai-compat', apiKey: 'k' } } } as never);
+  const registry = () =>
+    new ProviderRegistry({ providers: { polza: { type: 'openai-compat', apiKey: 'k' }, openrouter: { type: 'openai-compat', apiKey: 'k' } } } as never);
 
   it('parses polza models with per-million RUB pricing', async () => {
     vi.stubGlobal('fetch', stubFetch({ '/models': POLZA_MODELS }));
@@ -89,7 +96,10 @@ describe('model catalog', () => {
   });
 
   it('reports key limits and balance', async () => {
-    vi.stubGlobal('fetch', stubFetch({ '/key': { limit: 200, limit_remaining: 199.09, usage: 0.9, limit_reset: 'weekly' }, '/balance': { available: '199.09', amount: '599.14' } }));
+    vi.stubGlobal(
+      'fetch',
+      stubFetch({ '/key': { limit: 200, limit_remaining: 199.09, usage: 0.9, limit_reset: 'weekly' }, '/balance': { available: '199.09', amount: '599.14' } }),
+    );
     const status = await new ModelCatalog(registry()).key('polza');
     expect(status).toMatchObject({ limit: 200, remaining: 199.09, used: 0.9, balance: 199.09, currency: 'RUB' });
   });
@@ -189,8 +199,15 @@ describe('provider routing', () => {
       return new Response(chunks.join(''), { status: 200, headers: { 'content-type': 'text/event-stream' } });
     });
     const provider = new OpenAICompatProvider({ id: 'polza', apiKey: 'k', baseURL: 'https://polza.ai/api/v1' });
-    let usage;
-    for await (const ev of provider.stream({ model: 'm', system: 's', messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }], tools: [], maxTokens: 16, route: ['morph/fp8'] })) {
+    let usage: Usage | undefined;
+    for await (const ev of provider.stream({
+      model: 'm',
+      system: 's',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+      tools: [],
+      maxTokens: 16,
+      route: ['morph/fp8'],
+    })) {
       if (ev.type === 'done') usage = ev.usage;
     }
     // `only` is what actually forbids another upstream; `order` only ranks the allowed ones.

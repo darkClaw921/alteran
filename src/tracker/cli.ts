@@ -4,7 +4,13 @@ import { paint, section, setColorEnabled } from '../util/color.js';
 import { TrackerError, TrackerStore } from './store.js';
 import { projectRoot } from '../config/paths.js';
 
-const csv = (v: string, prev: string[] = []) => [...prev, ...v.split(',').map((s) => s.trim()).filter(Boolean)];
+const csv = (v: string, prev: string[] = []) => [
+  ...prev,
+  ...v
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+];
 const collect = (v: string, prev: string[] = []) => [...prev, v];
 
 interface Globals {
@@ -125,9 +131,7 @@ export function buildTasksCommand(name = 'tasks'): Command {
     .argument('<title...>')
     .option('-t, --type <type>', '', 'task')
     .option('-p, --priority <p>', '', '2')
-    .action((title: string[], o) =>
-      run(() => console.log(openStore(g()).create({ title: title.join(' '), type: o.type, priority: o.priority }).id)),
-    );
+    .action((title: string[], o) => run(() => console.log(openStore(g()).create({ title: title.join(' '), type: o.type, priority: o.priority }).id)));
 
   cmd
     .command('list')
@@ -186,8 +190,13 @@ export function buildTasksCommand(name = 'tasks'): Command {
     .action(() =>
       run(() => {
         const list = openStore(g()).blocked();
-        out(g(), list.map((b) => ({ ...b.issue, blocked_by: b.blockers })), () =>
-          list.length ? list.map((b) => `${issueLine(b.issue, true)}\n    ${paint.red('blocked by:')} ${paint.muted(b.blockers.join(', '))}`).join('\n') : 'No blocked issues',
+        out(
+          g(),
+          list.map((b) => ({ ...b.issue, blocked_by: b.blockers })),
+          () =>
+            list.length
+              ? list.map((b) => `${issueLine(b.issue, true)}\n    ${paint.red('blocked by:')} ${paint.muted(b.blockers.join(', '))}`).join('\n')
+              : 'No blocked issues',
         );
       }),
     );
@@ -242,7 +251,9 @@ export function buildTasksCommand(name = 'tasks'): Command {
             remove_labels: o.removeLabel,
           }),
         );
-        out(g(), updated.length === 1 ? updated[0] : updated, () => updated.map((i) => `${paint.cyan('Updated')} ${i.id} ${paint.muted(`(${i.status})`)}`).join('\n'));
+        out(g(), updated.length === 1 ? updated[0] : updated, () =>
+          updated.map((i) => `${paint.cyan('Updated')} ${i.id} ${paint.muted(`(${i.status})`)}`).join('\n'),
+        );
       }),
     );
 
@@ -365,7 +376,10 @@ export function buildTasksCommand(name = 'tasks'): Command {
     .action(() =>
       run(() => {
         const store = openStore(g());
-        const closed = store.epics().filter((e) => e.eligibleForClose).map((e) => store.close(e.epic.id, 'All children closed'));
+        const closed = store
+          .epics()
+          .filter((e) => e.eligibleForClose)
+          .map((e) => store.close(e.epic.id, 'All children closed'));
         out(g(), closed, () => (closed.length ? closed.map((i) => `Closed ${i.id}`).join('\n') : 'Nothing to close'));
       }),
     );
@@ -451,9 +465,15 @@ export function buildTasksCommand(name = 'tasks'): Command {
             [
               section('CONSILIUM'),
               `${paint.muted('Total:')} ${paint.bold(String(s.total))}   ${paint.muted('Ready:')} ${paint.green(String(s.ready))}   ${paint.muted('Blocked:')} ${paint.red(String(s.blocked))}`,
-              `${paint.muted('Status:')} ${Object.entries(s.byStatus).map(([k, v]) => `${paint.cyan(k)}=${v}`).join('  ')}`,
-              `${paint.muted('Type:')} ${Object.entries(s.byType).map(([k, v]) => `${paint.cyan(k)}=${v}`).join('  ')}`,
-              `${paint.muted('Priority:')} ${Object.entries(s.byPriority).map(([k, v]) => `${paint.cyan(k)}=${v}`).join('  ')}`,
+              `${paint.muted('Status:')} ${Object.entries(s.byStatus)
+                .map(([k, v]) => `${paint.cyan(k)}=${v}`)
+                .join('  ')}`,
+              `${paint.muted('Type:')} ${Object.entries(s.byType)
+                .map(([k, v]) => `${paint.cyan(k)}=${v}`)
+                .join('  ')}`,
+              `${paint.muted('Priority:')} ${Object.entries(s.byPriority)
+                .map(([k, v]) => `${paint.cyan(k)}=${v}`)
+                .join('  ')}`,
             ].join('\n'),
           );
         }),
@@ -472,9 +492,7 @@ export function buildTasksCommand(name = 'tasks'): Command {
     .option('--import-only')
     .action(() => run(() => out(g(), { ok: true, jsonl: openStore(g()).jsonlPath }, () => `JSONL is up to date: ${openStore(g()).jsonlPath}`)));
 
-  cmd
-    .command('where')
-    .action(() => run(() => console.log(openStore(g()).dir)));
+  cmd.command('where').action(() => run(() => console.log(openStore(g()).dir)));
 
   return cmd;
 }

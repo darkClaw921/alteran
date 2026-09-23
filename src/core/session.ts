@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { alteranHome, projectSlug } from '../config/paths.js';
-import type { Message } from '../types.js';
+import { emptyUsage, type Message, type Usage } from '../types.js';
 
 export interface SessionMeta {
   type: 'meta';
@@ -14,7 +14,12 @@ export interface SessionMeta {
   title?: string;
 }
 
-type Line = SessionMeta | { type: 'message'; message: Message } | { type: 'reset'; reason: 'compact' | 'clear' };
+type Line =
+  | SessionMeta
+  | { type: 'message'; message: Message }
+  | { type: 'reset'; reason: 'compact' | 'clear' }
+  /** Running total for the whole session, rewritten each turn; the last one wins on load. */
+  | { type: 'usage'; usage: Usage };
 
 export interface SessionSummary {
   id: string;
@@ -76,14 +81,21 @@ export class SessionStore {
     this.write({ type: 'message', message });
   }
 
+  /** Remember what the session has spent, so resuming it does not start the meter at zero. */
+  recordUsage(usage: Usage) {
+    this.write({ type: 'usage', usage });
+  }
+
   reset(reason: 'compact' | 'clear') {
     this.write({ type: 'reset', reason });
   }
 
   /** Messages after the last reset marker. */
-  static load(file: string): { messages: Message[]; meta?: SessionMeta } {
+  static load(file: string): { messages: Message[]; meta?: SessionMeta; usage: Usage } {
     const messages: Message[] = [];
     let meta: SessionMeta | undefined;
+    // Spend survives a reset: the money was spent whatever happened to the transcript afterwards.
+    let usage = emptyUsage();
     for (const raw of fs.readFileSync(file, 'utf8').split('\n')) {
       if (!raw.trim()) continue;
       try {
@@ -91,9 +103,10 @@ export class SessionStore {
         if (line.type === 'meta') meta = meta ? { ...meta, title: line.title ?? meta.title } : line;
         else if (line.type === 'reset') messages.length = 0;
         else if (line.type === 'message') messages.push(line.message);
+        else if (line.type === 'usage') usage = line.usage;
       } catch {}
     }
-    return { messages: sanitizeHistory(messages), meta };
+    return { messages: sanitizeHistory(messages), meta, usage };
   }
 
   /** Transcripts of the agents a session delegated to, newest first. */

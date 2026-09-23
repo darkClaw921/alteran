@@ -30,6 +30,8 @@ export interface ToolContext {
   agent: AgentHandle;
   signal: AbortSignal;
   toolUseId: string;
+  /** Run outside the model loop (deferred/scheduled work), so it must not disturb shared state. */
+  direct?: boolean;
 }
 
 export interface Tool<I = Record<string, unknown>> {
@@ -43,6 +45,11 @@ export interface Tool<I = Record<string, unknown>> {
   readOnly?: boolean | ((input: I) => boolean);
   /** Hidden from the model until surfaced (e.g. via ToolSearch). */
   deferred?: boolean;
+  /**
+   * Hard ceiling for one call, enforced by the runner. Tools that would otherwise hang (a fetch, a
+   * search over a huge tree) get one so a stuck call cannot hold the whole parallel batch hostage.
+   */
+  timeoutMs?: number;
   /** Short argument summary for the console: `Read(src/x.ts)`. */
   summarize?: (input: I) => string;
   run(input: I, ctx: ToolContext): Promise<ToolOutput>;

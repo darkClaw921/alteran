@@ -129,7 +129,9 @@ export class Scheduler {
   cancel(id: string, owner?: string): ScheduledItem {
     const item = this.find(id);
     if (!item || (owner && owner !== 'main' && item.owner !== owner)) {
-      const known = this.list(owner).filter((i) => i.state === 'waiting').map((i) => i.id);
+      const known = this.list(owner)
+        .filter((i) => i.state === 'waiting')
+        .map((i) => i.id);
       throw new Error(`No scheduled item "${id}".${known.length ? ` Waiting: ${known.join(', ')}.` : ' Nothing is scheduled.'}`);
     }
     this.disarm(item.id);
@@ -163,11 +165,14 @@ export class Scheduler {
   private arm(item: ScheduledItem) {
     this.disarm(item.id);
     const wait = Math.max(0, item.dueAt - Date.now());
-    const timer = setTimeout(() => {
-      // Long waits are split into chunks because setTimeout silently fires at once past ~24.8 days.
-      if (item.dueAt - Date.now() > 1000) return this.arm(item);
-      void this.fire(item);
-    }, Math.min(wait, MAX_TIMER_MS));
+    const timer = setTimeout(
+      () => {
+        // Long waits are split into chunks because setTimeout silently fires at once past ~24.8 days.
+        if (item.dueAt - Date.now() > 1000) return this.arm(item);
+        void this.fire(item);
+      },
+      Math.min(wait, MAX_TIMER_MS),
+    );
     timer.unref?.();
     this.timers.set(item.id, timer);
   }

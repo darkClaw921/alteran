@@ -41,10 +41,20 @@ Create the tasks of a phase with `tasks_create` (batch them: `{"issues":[...]}`)
 
 Cross-phase: the first tasks of Phase N+1 depend (`blocks`) on the terminal tasks of Phase N. Also make the Phase N+1 epic depend on the terminal tasks of Phase N.
 
-### 4. Validate
+### 4. Leave room for parallel work
+
+A phase is executed by agents working side by side, so the shape you give it decides how fast it can run.
+
+- Record in each task's **description** which files it creates or modifies. The executor uses that to decide what can run at the same time.
+- Add a dependency only where one genuinely exists: the task needs the other's code, schema or decision. Never chain tasks merely because you listed them in that order, and never make everything in a phase depend on the first task.
+- Prefer tasks that touch disjoint files. When two pieces of work must edit the same file, either merge them into one task or make one depend on the other — two agents editing one file at once lose each other's work.
+- Put shared groundwork (types, settings, an interface everything else builds on) in its own early task, and let the rest of the phase depend on that one task instead of on each other.
+
+### 5. Validate
 - No task over ~2 hours (split it); no trivial one-liners (group them).
 - Dependencies form a DAG (the tracker rejects cycles).
 - Completing all tasks in order achieves the whole plan; Phase N+1 only depends on Phase N or earlier.
+- Inside a phase, check that the dependencies you wrote leave at least a few tasks ready at once. A phase whose tasks form one long chain is usually over-constrained — re-read it and drop the dependencies that are not real.
 - If the plan is ambiguous somewhere, create tasks from best practice and state the assumption in the description. If it contradicts itself, create a `question` task describing what needs clarification.
 
 ## Output

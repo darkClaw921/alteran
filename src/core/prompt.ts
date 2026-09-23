@@ -115,7 +115,11 @@ export interface PromptCapabilities {
   tracker?: boolean;
 }
 
-export function systemSections(ext: Extensions, env: EnvInfo, caps: PromptCapabilities = { task: true, skill: true }): {
+export function systemSections(
+  ext: Extensions,
+  env: EnvInfo,
+  caps: PromptCapabilities = { task: true, skill: true },
+): {
   base: string;
   agents: string;
   skills: string;

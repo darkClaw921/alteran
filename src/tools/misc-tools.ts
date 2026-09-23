@@ -58,6 +58,7 @@ function htmlToText(html: string): string {
 export const WebFetchTool: Tool<{ url: string; prompt?: string }> = {
   name: 'WebFetch',
   category: 'network',
+  timeoutMs: 60_000,
   description: `Fetches a URL, converts HTML to text and (if prompt is given) answers the prompt about the page with a fast model.
 HTTP is upgraded to HTTPS. Use for docs and public pages; not for authenticated URLs.`,
   schema: z.object({
@@ -97,7 +98,10 @@ const askSchema = z.object({
       z.object({
         question: z.string(),
         header: z.string().optional(),
-        options: z.array(z.object({ label: z.string(), description: z.string().optional() })).min(2).max(4),
+        options: z
+          .array(z.object({ label: z.string(), description: z.string().optional() }))
+          .min(2)
+          .max(4),
         multiSelect: z.boolean().optional(),
       }),
     )

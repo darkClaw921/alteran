@@ -46,7 +46,11 @@ describe('text layout', () => {
     const wrapped = wrapLine(line, 20, 2);
     expect(wrapped.length).toBeGreaterThan(3);
     for (const l of wrapped) expect(l.reduce((s, x) => s + x.text.length, 0)).toBeLessThanOrEqual(20);
-    const joined = wrapped.map((l) => l.map((s) => s.text).join('')).join(' ').replace(/\s+/g, ' ').trim();
+    const joined = wrapped
+      .map((l) => l.map((s) => s.text).join(''))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
     expect(joined.replace(/\* /, '')).toBe('word '.repeat(20).trim());
   });
 
@@ -107,7 +111,6 @@ describe('gate art', () => {
     expect(max - min).toBeLessThan(max * 0.25);
   });
 
-
   it('renders a ring with nine chevrons at the requested size', () => {
     const lines = renderGate(42, 19, {
       chevrons: ['lit', 'lit', 'active', 'off', 'off', 'off', 'off', 'off', 'off'],
@@ -167,7 +170,11 @@ describe('boot animation', () => {
     let now = 0;
     return () => (now += stepMs);
   };
-  const cells = (ansi: string) => ansi.split(/\u001b\[\d+;1H/).slice(1).map((row) => row.replace(/\u001b\[[0-9;]*m/g, ''));
+  const cells = (ansi: string) =>
+    ansi
+      .split(/\u001b\[\d+;1H/)
+      .slice(1)
+      .map((row) => row.replace(/\u001b\[[0-9;]*m/g, ''));
 
   it('approaches the gate, opens the horizon and passes into the tunnel', () => {
     const at = (t: number, exit?: number) => introFrame(t, 80, 24, exit);
@@ -235,7 +242,7 @@ describe('terminal UI', () => {
     withPanels();
     const { io } = await launch({ cwd: dir, model: 'ollama:test', mode: 'acceptEdits' }, 200, 44);
     await sleep(700);
-    let screen = io.screen();
+    const screen = io.screen();
     expect(screen).toContain('[ A L T E R A N ]');
     expect(screen).not.toContain('HERMES');
     expect(screen).toContain('ASTRIA PORTA');
@@ -408,9 +415,6 @@ describe('terminal UI', () => {
     await sleep(300);
   }, 30000);
 
-
-
-
   it('shows the restored conversation when started with --resume', async () => {
     const sdir = path.join(home, 'sessions', projectSlug(dir));
     fs.mkdirSync(sdir, { recursive: true });
@@ -451,7 +455,15 @@ describe('terminal UI', () => {
     fs.writeFileSync(
       path.join(sdir, '33333333-3333-3333-3333-333333333333.jsonl'),
       [
-        JSON.stringify({ type: 'meta', id: '33333333-3333-3333-3333-333333333333', cwd: dir, root: dir, model: 'ollama:test', createdAt: new Date().toISOString(), title: 'earlier work' }),
+        JSON.stringify({
+          type: 'meta',
+          id: '33333333-3333-3333-3333-333333333333',
+          cwd: dir,
+          root: dir,
+          model: 'ollama:test',
+          createdAt: new Date().toISOString(),
+          title: 'earlier work',
+        }),
         JSON.stringify({ type: 'message', message: { role: 'user', content: [{ type: 'text', text: 'earlier work' }] } }),
       ].join('\n') + '\n',
     );
@@ -506,6 +518,37 @@ describe('terminal UI', () => {
     await untilScreen(io, 'alteran --resume 22222222');
   }, 30000);
 
+  it('takes a file with Enter while an @ mention is open, instead of sending the message', async () => {
+    fs.writeFileSync(path.join(dir, 'notes-for-later.md'), 'hello');
+    const { io } = await launch({ cwd: dir, model: 'ollama:test' }, 120, 34);
+    await sleep(700);
+    for (const ch of 'read @notes-for') io.key(ch);
+    await untilText(io, 'notes-for-later.md');
+    await sleep(200);
+    io.key('\r');
+    // The name is completed on the input line; nothing was submitted.
+    const screen = await untilText(io, 'read @notes-for-later.md');
+    expect(screen).toContain('> read @notes-for-later.md');
+
+    // The list is closed now, so the next Enter sends the message as usual.
+    await sleep(200);
+    io.key('\r');
+    // The input line empties and the run starts, which is what submitting looks like.
+    await untilScreen(io, 'type to queue a follow-up');
+
+  }, 30000);
+
+  it('does not mistake an address for a file mention', async () => {
+    fs.writeFileSync(path.join(dir, 'notes-for-later.md'), 'hello');
+    const { io } = await launch({ cwd: dir, model: 'ollama:test' }, 120, 34);
+    await sleep(700);
+    // `@` only opens the file list at a word boundary, so an e-mail address types through.
+    for (const ch of 'write to igor@notes') io.key(ch);
+    await untilText(io, 'igor@notes');
+    await sleep(800);
+    expect(io.screen()).not.toContain('notes-for-later.md');
+  }, 30000);
+
   it('toggles help as an overlay instead of pushing it into the transcript', async () => {
     const { io } = await launch({ cwd: dir, model: 'ollama:test' }, 120, 34);
     await sleep(700);
@@ -551,9 +594,6 @@ describe('terminal UI', () => {
     await sleep(300);
   }, 30000);
 
-
-
-
   it('picks a model and pins an upstream provider from /model', async () => {
     withPanels({ providers: { polza: { type: 'openai-compat', apiKey: 'k' } } });
     const catalog = {
@@ -563,7 +603,10 @@ describe('terminal UI', () => {
           name: 'DeepSeek: V4.1 Flash',
           top_provider: { context_length: 1_048_576, pricing: { prompt_per_million: '13.21', completion_per_million: '39.64', currency: 'RUB' } },
         },
-        { id: 'anthropic/claude-opus-5', top_provider: { context_length: 1_000_000, pricing: { prompt_per_million: '471.96', completion_per_million: '2359.84', currency: 'RUB' } } },
+        {
+          id: 'anthropic/claude-opus-5',
+          top_provider: { context_length: 1_000_000, pricing: { prompt_per_million: '471.96', completion_per_million: '2359.84', currency: 'RUB' } },
+        },
       ],
     };
     const detail = {
@@ -615,8 +658,6 @@ describe('terminal UI', () => {
     io.key('\u0003');
     await sleep(300);
   }, 30000);
-
-
 });
 
 describe('AGENTS panel', () => {
@@ -627,8 +668,25 @@ describe('AGENTS panel', () => {
     const store = new UiStore(rt);
     expect(text(agentLines(store, 40, 6))).toContain('nothing delegated');
 
-    rt.bus.emit({ type: 'agent_start', agentId: 'agent-1', name: 'Explore-1', label: 'Explore: map the repo', parentId: 'main', depth: 1, model: 'ollama:test', background: true });
-    rt.bus.emit({ type: 'agent_start', agentId: 'agent-2', name: 'general-purpose-2', label: 'general-purpose: patch it', parentId: 'agent-1', depth: 2, model: 'ollama:test' });
+    rt.bus.emit({
+      type: 'agent_start',
+      agentId: 'agent-1',
+      name: 'Explore-1',
+      label: 'Explore: map the repo',
+      parentId: 'main',
+      depth: 1,
+      model: 'ollama:test',
+      background: true,
+    });
+    rt.bus.emit({
+      type: 'agent_start',
+      agentId: 'agent-2',
+      name: 'general-purpose-2',
+      label: 'general-purpose: patch it',
+      parentId: 'agent-1',
+      depth: 2,
+      model: 'ollama:test',
+    });
     rt.bus.emit({ type: 'status', agentId: 'agent-2', state: 'tool', detail: 'Grep' });
 
     // Children follow the agent that launched them, indented one level.

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box } from 'ink';
 import { centerGate, gateSize, renderGate } from '../gate.js';
 import { fmtClock, seg, truncate, type Line } from '../lines.js';
@@ -101,12 +100,7 @@ export function GatePanel({ store, width, height }: { store: UiStore; width: num
         </>
       ) : null}
       <Box flexGrow={1} />
-      <Lines
-        lines={[
-          [seg('[F2] diff     [F3] tests', C.muted)],
-          [seg('[F4] phases   [F5] rerun stage', C.muted)],
-        ]}
-      />
+      <Lines lines={[[seg('[F2] diff     [F3] tests', C.muted)], [seg('[F4] phases   [F5] rerun stage', C.muted)]]} />
     </Box>
   );
 }

@@ -1,14 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type {
-  ContentBlock,
-  Message,
-  Provider,
-  ProviderRequest,
-  StopReason,
-  StreamEvent,
-  ToolResultBlock,
-  Usage,
-} from '../types.js';
+import type { ContentBlock, Message, Provider, ProviderRequest, StopReason, StreamEvent, ToolResultBlock, Usage } from '../types.js';
 import { emptyUsage } from '../types.js';
 import { parseToolJson } from './json.js';
 

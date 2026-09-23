@@ -74,7 +74,13 @@ export function contextBreakdown(rt: Runtime, agent: Agent = rt.main): ContextRe
   const window = rt.registry.info(agent.model).contextWindow;
   const parts: ContextPart[] = [
     { key: 'system', label: 'system prompt', tokens: system, glyph: '#' },
-    { key: 'instructions', label: 'project instructions', tokens: instructions, glyph: '$', detail: rt.ext.instructions.map((i) => i.file.split('/').pop()).join(', ') },
+    {
+      key: 'instructions',
+      label: 'project instructions',
+      tokens: instructions,
+      glyph: '$',
+      detail: rt.ext.instructions.map((i) => i.file.split('/').pop()).join(', '),
+    },
     { key: 'catalog', label: 'agents & skills', tokens: catalog, glyph: '%', detail: `${rt.ext.agents.size} agents, ${rt.ext.skills.size} skills` },
     { key: 'tools', label: 'tool schemas', tokens: tools, glyph: '=', detail: `${toolCount} tools` },
     { key: 'mcp', label: 'MCP tool schemas', tokens: mcp, glyph: '~', detail: `${mcpCount} tools` },

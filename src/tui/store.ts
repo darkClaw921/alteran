@@ -6,6 +6,7 @@ import type { KeyStatus } from '../providers/catalog.js';
 import { isClosedStatus } from '../tracker/model.js';
 import { TrackerStore } from '../tracker/store.js';
 import type { ToolDisplay } from '../tools/types.js';
+import { promptTokens } from '../types.js';
 import { textOf } from '../types.js';
 import { readGit, type GitInfo } from './git.js';
 import { setDisplayRoot } from './render.js';
@@ -155,6 +156,11 @@ export class UiStore {
     this.keyTimer.unref();
     rt.mcp.onChange(() => this.changed());
     this.contextWindow = rt.registry.info(rt.model).contextWindow;
+    // A resumed session brings its spend with it; without this the meter restarts at zero every time.
+    const earlier = rt.sessionUsage();
+    this.sessionTokens = promptTokens(earlier) + earlier.outputTokens;
+    this.sessionCost = earlier.cost ?? 0;
+    this.costCurrency = earlier.currency ?? '';
     this.refreshContext();
   }
 
@@ -355,7 +361,12 @@ export class UiStore {
       this.consilium = {
         title: 'todos',
         note: `plan ${this.todos.filter((t) => t.status === 'completed').length}/${this.todos.length}`,
-        items: this.todos.map((t, i) => ({ id: String(i), title: t.status === 'in_progress' && t.activeForm ? t.activeForm : t.content, mark: mark[t.status], color: color[t.status] })),
+        items: this.todos.map((t, i) => ({
+          id: String(i),
+          title: t.status === 'in_progress' && t.activeForm ? t.activeForm : t.content,
+          mark: mark[t.status],
+          color: color[t.status],
+        })),
         source: 'todos',
       };
     } else {
@@ -395,7 +406,7 @@ export class UiStore {
           this.push({ kind: 'user', text, t: this.rel() });
         }
         break;
-      case 'text_delta':
+      case 'text_delta': {
         if (ev.agentId !== 'main') break;
         if (this.liveThinking) {
           this.liveThinking.live = false;
@@ -408,7 +419,8 @@ export class UiStore {
         this.touch(live);
         this.changed();
         break;
-      case 'thinking_delta':
+      }
+      case 'thinking_delta': {
         if (ev.agentId !== 'main') break;
         const lt = this.liveThinking ?? (this.push({ kind: 'thinking', text: '', t: this.rel(), live: true }) as Entry & { v: number; kind: 'thinking' });
         this.liveThinking = lt;
@@ -416,9 +428,14 @@ export class UiStore {
         this.touch(lt);
         this.changed();
         break;
+      }
       case 'assistant_message': {
         if (ev.agentId !== 'main') break;
-        const text = ev.message.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n').trim();
+        const text = ev.message.content
+          .filter((b) => b.type === 'text')
+          .map((b) => (b as { text: string }).text)
+          .join('\n')
+          .trim();
         if (this.liveText) {
           this.liveText.text = text || this.liveText.text;
           this.liveText.live = false;
@@ -465,9 +482,22 @@ export class UiStore {
         if (['Edit', 'Write', 'MultiEdit', 'Bash'].includes(ev.name)) this.refreshGit();
         if (ev.name.startsWith('tasks_')) this.refreshConsilium();
         if (ev.output.isError) this.log(`${ev.name} failed`, C.red);
-        else if (ev.name === 'Bash') this.log(`${String(ev.input.command ?? '').split(' ').slice(0, 2).join(' ')}  ${short.slice(0, 20)}`, C.text);
+        else if (ev.name === 'Bash')
+          this.log(
+            `${String(ev.input.command ?? '')
+              .split(' ')
+              .slice(0, 2)
+              .join(' ')}  ${short.slice(0, 20)}`,
+            C.text,
+          );
         else if (ev.name === 'tasks_close') this.log(`closed ${(ev.input.ids as string[] | undefined)?.join(' ') ?? ''}`, C.green);
-        else if (['Edit', 'Write', 'MultiEdit'].includes(ev.name)) this.log(`patched ${String(ev.input.file_path ?? '').split('/').pop()}`, C.text);
+        else if (['Edit', 'Write', 'MultiEdit'].includes(ev.name))
+          this.log(
+            `patched ${String(ev.input.file_path ?? '')
+              .split('/')
+              .pop()}`,
+            C.text,
+          );
         this.changed();
         break;
       }
@@ -592,7 +622,12 @@ export class UiStore {
         this.changed();
         break;
       case 'compact':
-        this.push({ kind: 'notice', level: 'info', text: `Context compacted (~${Math.round(ev.beforeTokens / 1000)}k → ~${Math.round(ev.afterTokens / 1000)}k tokens)`, t: this.rel() });
+        this.push({
+          kind: 'notice',
+          level: 'info',
+          text: `Context compacted (~${Math.round(ev.beforeTokens / 1000)}k → ~${Math.round(ev.afterTokens / 1000)}k tokens)`,
+          t: this.rel(),
+        });
         if (ev.agentId === 'main') {
           this.contextTokens = ev.afterTokens;
           this.refreshContext();
@@ -606,7 +641,6 @@ export class UiStore {
     }
   }
 }
-
 
 function isFinalEntry(e: Entry & { v: number }, store: UiStore): boolean {
   if (e === store.liveEntry() || e === store.liveThinkingEntry()) return false;

@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 const out = execFileSync('node_modules/.bin/tsx', ['scripts/preview.tsx'], { encoding: 'utf8', env: { ...process.env, FORCE_COLOR: '3' } });
 
 const lum = (r: number, g: number, b: number) => {
-  const f = (c: number) => (c / 255 <= 0.03928 ? c / 255 / 12.92 : (((c / 255) + 0.055) / 1.055) ** 2.4);
+  const f = (c: number) => (c / 255 <= 0.03928 ? c / 255 / 12.92 : ((c / 255 + 0.055) / 1.055) ** 2.4);
   return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
 };
 const ratio = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);

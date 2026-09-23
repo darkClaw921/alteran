@@ -174,7 +174,10 @@ Phases are epics titled "Phase N: <name>"; tasks of a phase use parent=<epic id>
       guard((c) => {
         const s = store(c);
         const closed = input.ids.map((id) => s.close(id, input.reason, { force: input.force }));
-        const epics = s.epics().filter((e) => e.eligibleForClose).map((e) => e.epic.id);
+        const epics = s
+          .epics()
+          .filter((e) => e.eligibleForClose)
+          .map((e) => e.epic.id);
         const hint = epics.length ? `\nEpics with all children closed (close them when the phase is verified): ${epics.join(', ')}` : '';
         return ok(closed.map((i) => `Closed ${i.id}: ${i.title}`).join('\n') + hint, { summary: `Closed ${closed.map((i) => i.id).join(', ')}` });
       })(ctx),
@@ -182,11 +185,10 @@ Phases are epics titled "Phase N: <name>"; tasks of a phase use parent=<epic id>
   {
     name: 'tasks_dep_add',
     category: 'tasks',
-    description: 'Add dependencies: each {issue, depends_on, type?}. type defaults to "blocks" (issue cannot start until depends_on is closed). Cycles are rejected.',
+    description:
+      'Add dependencies: each {issue, depends_on, type?}. type defaults to "blocks" (issue cannot start until depends_on is closed). Cycles are rejected.',
     schema: z.object({
-      deps: z
-        .array(z.object({ issue: z.string(), depends_on: z.string(), type: z.enum(DEP_TYPES).optional() }))
-        .min(1),
+      deps: z.array(z.object({ issue: z.string(), depends_on: z.string(), type: z.enum(DEP_TYPES).optional() })).min(1),
     }),
     summarize: (i: { deps: unknown[] }) => `${i.deps.length} edge(s)`,
     run: (input: { deps: Array<{ issue: string; depends_on: string; type?: string }> }, ctx) =>
@@ -230,7 +232,12 @@ Phases are epics titled "Phase N: <name>"; tasks of a phase use parent=<epic id>
         const kids = s.children(e.id);
         const info = s.blockInfo();
         return ok(
-          [issueDetails(s, e), '', 'Tasks:', ...kids.map((k) => `  ${issueLine(k)}${info.get(k.id)?.blocked ? `  (blocked by ${info.get(k.id)!.blockers.join(', ')})` : ''}`)].join('\n'),
+          [
+            issueDetails(s, e),
+            '',
+            'Tasks:',
+            ...kids.map((k) => `  ${issueLine(k)}${info.get(k.id)?.blocked ? `  (blocked by ${info.get(k.id)!.blockers.join(', ')})` : ''}`),
+          ].join('\n'),
           { summary: `${e.id}: ${kids.length} tasks` },
         );
       })(ctx),

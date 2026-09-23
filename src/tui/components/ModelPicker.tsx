@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box } from 'ink';
 import type { CatalogModel, ModelRoute } from '../../providers/catalog.js';
 import { filterModels, fmtContext, fmtMoney, fmtPrice } from '../../providers/catalog.js';
@@ -66,7 +65,13 @@ export function ModelPickerView({ state, width, height }: { state: PickerState; 
     );
   } else {
     const picked = state.chosen.length ? `order: ${state.chosen.join(' > ')}` : 'routing: automatic (cheapest available)';
-    lines.push(row([seg(`${state.routes.length} providers`, C.muted), seg('   ', C.bg), seg(truncate(picked, Math.max(10, inner - 18)), state.chosen.length ? C.amber : C.dim)]));
+    lines.push(
+      row([
+        seg(`${state.routes.length} providers`, C.muted),
+        seg('   ', C.bg),
+        seg(truncate(picked, Math.max(10, inner - 18)), state.chosen.length ? C.amber : C.dim),
+      ]),
+    );
   }
   lines.push(rule());
 
@@ -159,8 +164,34 @@ export function ModelPickerView({ state, width, height }: { state: PickerState; 
 
   const hints =
     state.pane === 'models'
-      ? [seg('^v', C.muted), seg(' select  ', C.dim), seg('->', C.muted), seg(' providers & prices  ', C.dim), seg('enter', C.muted), seg(' use  ', C.dim), seg('tab', C.muted), seg(' provider  ', C.dim), seg('^R', C.muted), seg(' refresh  ', C.dim), seg('esc', C.muted), seg(' close', C.dim)]
-      : [seg('^v', C.muted), seg(' move  ', C.dim), seg('space', C.muted), seg(' tick (order = priority)  ', C.dim), seg('enter', C.muted), seg(' pin & use  ', C.dim), seg('a', C.muted), seg(' automatic  ', C.dim), seg('<-', C.muted), seg(' back  ', C.dim), seg('esc', C.muted), seg(' close', C.dim)];
+      ? [
+          seg('^v', C.muted),
+          seg(' select  ', C.dim),
+          seg('->', C.muted),
+          seg(' providers & prices  ', C.dim),
+          seg('enter', C.muted),
+          seg(' use  ', C.dim),
+          seg('tab', C.muted),
+          seg(' provider  ', C.dim),
+          seg('^R', C.muted),
+          seg(' refresh  ', C.dim),
+          seg('esc', C.muted),
+          seg(' close', C.dim),
+        ]
+      : [
+          seg('^v', C.muted),
+          seg(' move  ', C.dim),
+          seg('space', C.muted),
+          seg(' tick (order = priority)  ', C.dim),
+          seg('enter', C.muted),
+          seg(' pin & use  ', C.dim),
+          seg('a', C.muted),
+          seg(' automatic  ', C.dim),
+          seg('<-', C.muted),
+          seg(' back  ', C.dim),
+          seg('esc', C.muted),
+          seg(' close', C.dim),
+        ];
   lines.push(row(hints));
   lines.push([seg('+' + '-'.repeat(Math.max(0, width - 2)) + '+', C.gold)]);
 

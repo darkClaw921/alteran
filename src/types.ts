@@ -41,13 +41,7 @@ export interface ToolResultBlock {
   isError?: boolean;
 }
 
-export type ContentBlock =
-  | TextBlock
-  | ImageBlock
-  | ThinkingBlock
-  | OpaqueBlock
-  | ToolUseBlock
-  | ToolResultBlock;
+export type ContentBlock = TextBlock | ImageBlock | ThinkingBlock | OpaqueBlock | ToolUseBlock | ToolResultBlock;
 
 export interface Message {
   role: Role;

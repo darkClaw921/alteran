@@ -1,0 +1,51 @@
+# Changelog
+
+Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — [Semantic Versioning](https://semver.org/lang/ru/).
+
+## [Unreleased]
+
+### Добавлено
+
+- **Лимит расхода за сессию.** `budget.tokens` / `budget.cost` с `onExceed: warn | stop`. Порог проверяется в начале хода, **до** обращения к модели, поэтому останавливает следующий запрос, а не подсчитывает уже оплаченный. Расход суммируется по последнему `usage` каждого агента, включая субагентов. Команда `/budget`, сброс при `/clear`.
+- **Микрокомпакция.** Старые результаты инструментов заменяются одной строкой-заглушкой выше `microcompact.threshold`, не трогая недавние (`microcompact.keepRecent`) и сохраняя парность `tool_use` ↔ `tool_result`. Дешевле полной компакции, которая платит за вызов модели.
+- **Таймауты инструментов и ограничение параллелизма.** `Tool.timeoutMs` (Glob 30 с, Grep и WebFetch 60 с) и ширина read-only батча `MAX_PARALLEL_TOOLS = 8`: один зависший вызов больше не держит весь батч.
+- **Оживлены хуки.** `Notification` теперь действительно эмитится (запрос подтверждения, конец хода), `continue: false` останавливает сессию, `hookSpecificOutput.updatedPermissions` добавляет правила разрешений.
+- **Команда `/budget`** и настройки `budget`, `microcompact`.
+- **Biome** как линтер (`pnpm lint`) и форматтер (`pnpm format`), плюс `biome.json` под идиомы репозитория.
+- **CI на каждый push и pull request** (`ci.yml`): lint → typecheck → test → build на Node 22 и 24. Отдельный `sandbox.yml` для контейнерного набора краевых случаев.
+- `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`.
+
+### Исправлено
+
+- **Ретраи с бэкоффом на транзиентные ошибки провайдера**: таймауты, обрывы соединения, 429/5xx и «смазанный» вызов инструмента, который шлюз отдаёт как 400. Учитывается `Retry-After`; отмена по `Esc` прерывает ожидание немедленно; фатальные ошибки не повторяются.
+- **Гонка рабочего каталога.** `runShell` пишет финальный `pwd` обратно, только если вызов владеет каталогом: отслеживание включено и `runtime.cwd` не изменился за время вызова. Фоновые и отложенные запуски каталог больше не двигают.
+
+### Изменено
+
+- Тестовые сьюты: добавлены `test/hooks.test.ts` и блоки про бюджет, микрокомпакцию, таймауты и рабочий каталог в `test/agent.test.ts`.
+
+## [0.1.1] — 2026-09-20
+
+### Добавлено
+
+- Оркестрация агентов: `Task` (блокирующий и фоновый), `SendMessage`, `ListAgents`, `TaskStop`; панель `AGENTS`.
+- Отложенная работа: `Schedule`, `ScheduleList`, `ScheduleCancel`, секция `SCHEDULE` в левой панели, `/schedule`.
+- Публикация в npm через Trusted Publisher (OIDC), без токена в секретах.
+
+### Исправлено
+
+- Тесты TUI ждут отрисовку по условию, а не по таймеру, и работают под CI (Ink принудительно делают интерактивным).
+
+## [0.1.0] — 2026-09-18
+
+Первый выпуск: терминальный кодинг-агент со встроенным фазовым трекером задач.
+
+- Цикл модель ↔ инструменты, параллельные read-only вызовы, автокомпакция, сессии с `--continue` / `--resume`.
+- Провайдеры: Anthropic (adaptive thinking, prompt caching), OpenAI Responses API, любые OpenAI-совместимые (OpenRouter, polza.ai, Ollama, LM Studio).
+- Трекер CONSILIUM, совместимый с beads: эпики-фазы, зависимости, `ready` / `blocked`, интероп с `br`.
+- Права CLIPEUS в синтаксисе Claude, хуки в формате Claude, совместимость с Claude Code, Codex, `~/.agents`, Cursor и Gemini, MCP.
+- TUI на Ink: врата ASTRIA PORTA, метрики VIRES, анимация входа, две раскладки.
+
+[Unreleased]: https://github.com/darkClaw921/alteran/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/darkClaw921/alteran/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/darkClaw921/alteran/releases/tag/v0.1.0
