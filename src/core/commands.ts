@@ -65,6 +65,7 @@ const BUILTIN: SlashCommandInfo[] = [
   { name: 'checkpoints', description: 'List the edits this session can undo', origin: 'builtin' },
   { name: 'undo', description: 'Revert the last edit(s) this session made', hint: '[count | all]', origin: 'builtin' },
   { name: 'redo', description: 'Re-apply the last undone edit(s)', hint: '[count | all]', origin: 'builtin' },
+  { name: 'rewind', description: 'Put the files back to how they stood at an earlier message', hint: '[n]', origin: 'builtin' },
   { name: 'exit', description: 'Quit', origin: 'builtin' },
 ];
 
@@ -158,6 +159,33 @@ function checkpointCommand(rt: Runtime, name: string, args: string): CommandResu
     return n;
   };
 
+  // Edits are grouped by the message that asked for them, so a whole exchange can be taken back at
+  // once — the unit a person actually thinks in, rather than a count of individual writes.
+  if (name === 'rewind') {
+    const points = cp.points();
+    if (!points.length) return { kind: 'info', text: 'No messages recorded in this session yet.' };
+    if (!args) {
+      return {
+        kind: 'info',
+        text: [
+          'Rewind to the state before one of these messages — /rewind <n>:',
+          ...points
+            .slice(-15)
+            .map((m) => `  ${String(m.id).padStart(3)}  ${m.undoes ? `${String(m.undoes).padStart(3)} edit${m.undoes === 1 ? ' ' : 's'} back` : '   here      '}  ${m.label}`),
+        ].join('\n'),
+      };
+    }
+    const id = Number(args);
+    if (!Number.isInteger(id)) return { kind: 'error', text: 'Usage: /rewind [n] — run /rewind with no argument to see the numbers.' };
+    const res = cp.rewind(id);
+    if ('error' in res) return { kind: 'error', text: res.error };
+    for (const f of res.files) rt.fileState.delete(f);
+    if (!res.files.length && !res.skipped.length && !res.failed.length) {
+      return { kind: 'info', text: `Already at "${res.mark.label}" — nothing to take back.` };
+    }
+    return { kind: 'info', text: [`Back to before "${res.mark.label}" (${res.files.length} file${res.files.length === 1 ? '' : 's'} restored):`, ...res.files.map((f) => `  ${rel(f)}`), ...trouble(res, rel)].join('\n') };
+  }
+
   if (name === 'checkpoints') {
     const rows = cp.list();
     if (!rows.length) return { kind: 'info', text: 'No edits recorded in this session yet.' };
@@ -180,13 +208,24 @@ function checkpointCommand(rt: Runtime, name: string, args: string): CommandResu
   const count = howMany(available);
   if (count < 0) return { kind: 'error', text: `Usage: /${name} [count | all]` };
   const n = Math.min(count, available);
-  const { files, skipped } = undone ? cp.undo(n) : cp.redo(n);
-  for (const f of files) rt.fileState.delete(f);
+  const res = undone ? cp.undo(n) : cp.redo(n);
+  for (const f of res.files) rt.fileState.delete(f);
 
   const verb = undone ? 'Reverted' : 'Re-applied';
-  const lines = [`${verb} ${n} edit${n === 1 ? '' : 's'} (${files.length} file${files.length === 1 ? '' : 's'} changed):`, ...files.map((f) => `  ${rel(f)}`)];
-  if (skipped.length) lines.push(`Could not restore ${skipped.length} file(s) — too large to have been copied:`, ...skipped.map((f) => `  ${rel(f)}`));
+  const lines = [
+    `${verb} ${n} edit${n === 1 ? '' : 's'} (${res.files.length} file${res.files.length === 1 ? '' : 's'} changed):`,
+    ...res.files.map((f) => `  ${rel(f)}`),
+    ...trouble(res, rel),
+  ];
   return { kind: 'info', text: lines.join('\n') };
+}
+
+/** What did not move, and why — a rollback that half worked must say so. */
+function trouble(res: { skipped: string[]; failed: string[] }, rel: (f: string) => string): string[] {
+  const out: string[] = [];
+  if (res.skipped.length) out.push(`Could not restore ${res.skipped.length} file(s) — too large to have been copied:`, ...res.skipped.map((f) => `  ${rel(f)}`));
+  if (res.failed.length) out.push(`Could not write ${res.failed.length} file(s) — they are unchanged:`, ...res.failed.map((f) => `  ${rel(f)}`));
+  return out;
 }
 
 function tracker(rt: Runtime): TrackerStore | undefined {
@@ -225,6 +264,7 @@ export async function runSlashCommand(rt: Runtime, input: string): Promise<Comma
     case 'checkpoints':
     case 'undo':
     case 'redo':
+    case 'rewind':
       return checkpointCommand(rt, name, args);
     case 'context':
       return { kind: 'ui', action: 'context' };

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, render, useApp, useInput, useStdin, useStdout, useWindowSize } from 'ink';
 import fg from 'fast-glob';
 import { InterruptedError } from '../core/agent.js';
+import { exactContextLine } from '../core/context.js';
 import { listSlashCommands, runSlashCommand, resumeList } from '../core/commands.js';
 import { Runtime, type PlanDecision, type UIBridge } from '../core/runtime.js';
 import type { PermissionAnswer, PermissionRequest } from '../permissions/permissions.js';
@@ -336,6 +337,9 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
 
   const submitPrompt = useCallback(
     async (text: string) => {
+      // Name the point before the turn runs, so `/rewind` can put the tree back to how it stood
+      // when this was asked for — the edits that follow all belong to this message.
+      rt.checkpoints.mark(text);
       await runTask((signal) => rt.main.send(text, signal), text);
     },
     [rt, runTask],
@@ -411,6 +415,13 @@ function App({ rt, store, setMouse, inline, onLayout, clearScreen, dialogRef, in
               store.refreshContext();
               if (store.contextReport) store.push({ kind: 'context', report: store.contextReport });
               store.changed();
+              // The estimate is on screen already; the provider's own count joins it when there is
+              // one, so the number stops being a guess wherever the model can settle it.
+              void exactContextLine(rt).then((line) => {
+                if (!line) return;
+                store.push({ kind: 'notice', level: 'info', text: line, t: store.rel() });
+                store.changed();
+              });
             }
             if (res.action === 'copy') copyLast(res.arg);
             if (res.action === 'export') exportTranscript(res.arg);
