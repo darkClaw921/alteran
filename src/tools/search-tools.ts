@@ -12,6 +12,7 @@ export const GlobTool: Tool<{ pattern: string; path?: string }> = {
   name: 'Glob',
   category: 'read',
   readOnly: true,
+  timeoutMs: 30_000,
   description: 'Fast file pattern matching ("**/*.ts", "src/**/*.tsx"). Returns matching paths sorted by modification time (newest first).',
   schema: z.object({
     pattern: z.string().describe('Glob pattern'),
@@ -73,6 +74,7 @@ export const GrepTool: Tool<z.infer<typeof grepSchema>> = {
   name: 'Grep',
   category: 'read',
   readOnly: true,
+  timeoutMs: 60_000,
   description: `Content search built on ripgrep. Supports full regex, glob/type filters and three output modes:
 "files_with_matches" (default, paths only), "content" (matching lines, supports -A/-B/-C/-n), "count".
 Use this instead of grep/rg in Bash.`,

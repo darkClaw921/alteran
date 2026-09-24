@@ -68,4 +68,13 @@ export const RIGHT_WIDTH = 50;
 export const SHOW_LEFT_MIN = 158;
 export const SHOW_RIGHT_MIN = 108;
 
-export const SPINNER_VERBS = ['Dialing', 'Locking chevron', 'Engaging', 'Calibrating', 'Aligning glyphs', 'Transmitting', 'Stabilizing wormhole', 'Consulting the Ancients'];
+export const SPINNER_VERBS = [
+  'Dialing',
+  'Locking chevron',
+  'Engaging',
+  'Calibrating',
+  'Aligning glyphs',
+  'Transmitting',
+  'Stabilizing wormhole',
+  'Consulting the Ancients',
+];

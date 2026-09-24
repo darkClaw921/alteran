@@ -116,7 +116,10 @@ let chipX = SX;
 const chips = CHIPS.map((c, i) => {
   const at = chipX;
   chipX += c.w + 46;
-  const arrow = i < CHIPS.length - 1 ? `<path class="arrow a${i}" d="M ${at + c.w + 12} 222 L ${at + c.w + 34} 222 M ${at + c.w + 27} 217 L ${at + c.w + 34} 222 L ${at + c.w + 27} 227" />` : '';
+  const arrow =
+    i < CHIPS.length - 1
+      ? `<path class="arrow a${i}" d="M ${at + c.w + 12} 222 L ${at + c.w + 34} 222 M ${at + c.w + 27} 217 L ${at + c.w + 34} 222 L ${at + c.w + 27} 227" />`
+      : '';
   return `<g class="chip c${i}">
         <rect x="${at}" y="205" width="${c.w}" height="34" rx="4" />
         <text x="${at + c.w / 2}" y="227" text-anchor="middle">${c.label}</text>
@@ -131,7 +134,7 @@ const chipUse = CHIPS.map((_, i) => `.c${i},.a${i}{animation-name:chip${i}}`).jo
 
 /** Faint star field — deterministic, so the file does not churn between runs. */
 let seed = 20260923;
-const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
 const stars = Array.from({ length: 70 }, () => {
   const sx = (rnd() * W).toFixed(1);
   const sy = (rnd() * H).toFixed(1);

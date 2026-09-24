@@ -53,7 +53,10 @@ export function splitCommand(cmd: string): string[] {
     cur += c;
   }
   parts.push(cur);
-  return parts.map((p) => p.trim()).filter(Boolean).map(stripEnvPrefix);
+  return parts
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map(stripEnvPrefix);
 }
 
 function stripEnvPrefix(cmd: string): string {
@@ -68,7 +71,15 @@ function matchBashSpec(spec: string, command: string): boolean {
     return cmd === prefix || cmd.startsWith(prefix + ' ');
   }
   if (spec.includes('*')) {
-    const re = new RegExp('^' + spec.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 's');
+    const re = new RegExp(
+      '^' +
+        spec
+          .split('*')
+          .map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+          .join('.*') +
+        '$',
+      's',
+    );
     return re.test(cmd);
   }
   return cmd === spec;

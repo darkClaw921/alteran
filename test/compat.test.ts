@@ -46,7 +46,10 @@ describe('frontmatter', () => {
 
 describe('extension loading', () => {
   it('loads agents, commands, skills and MCP servers from Claude Code layout', () => {
-    write(path.join(process.env.CLAUDE_CONFIG_DIR!, 'agents', 'reviewer.md'), '---\nname: reviewer\ndescription: Reviews code\ntools: Read, Grep\nmodel: sonnet\n---\nBe strict.');
+    write(
+      path.join(process.env.CLAUDE_CONFIG_DIR!, 'agents', 'reviewer.md'),
+      '---\nname: reviewer\ndescription: Reviews code\ntools: Read, Grep\nmodel: sonnet\n---\nBe strict.',
+    );
     write(path.join(root, '.claude', 'commands', 'ship.md'), '---\ndescription: Ship it\nargument-hint: <env>\n---\nDeploy to $ARGUMENTS');
     write(path.join(root, '.claude', 'skills', 'deploy', 'SKILL.md'), '---\nname: deploy\ndescription: How to deploy\n---\nSteps');
     write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { local: { command: 'node', args: ['s.js'] } } }));
@@ -69,12 +72,18 @@ describe('extension loading', () => {
     write(path.join(pluginRoot, 'commands', 'audit.md'), 'Audit $ARGUMENTS');
     write(path.join(pluginRoot, 'skills', 'sec', 'SKILL.md'), '---\nname: sec\ndescription: Security\n---\nx');
     write(path.join(pluginRoot, '.mcp.json'), JSON.stringify({ mcpServers: { srv: { command: '${CLAUDE_PLUGIN_ROOT}/bin/srv' } } }));
-    write(path.join(pluginRoot, 'hooks', 'hooks.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo hi' }] }] } }));
+    write(
+      path.join(pluginRoot, 'hooks', 'hooks.json'),
+      JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo hi' }] }] } }),
+    );
     write(
       path.join(process.env.CLAUDE_CONFIG_DIR!, 'plugins', 'installed_plugins.json'),
       JSON.stringify({ plugins: { 'toolkit@market': [{ scope: 'user', installPath: pluginRoot }] } }),
     );
-    write(path.join(process.env.CLAUDE_CONFIG_DIR!, 'settings.json'), JSON.stringify({ enabledPlugins: { 'toolkit@market': true }, permissions: { allow: ['Bash(ls:*)'] } }));
+    write(
+      path.join(process.env.CLAUDE_CONFIG_DIR!, 'settings.json'),
+      JSON.stringify({ enabledPlugins: { 'toolkit@market': true }, permissions: { allow: ['Bash(ls:*)'] } }),
+    );
 
     const ext = loadExtensions({ cwd: root, root, settings: {} });
     expect(ext.plugins.map((p) => p.name)).toContain('toolkit');
@@ -88,7 +97,10 @@ describe('extension loading', () => {
   it('ignores plugins that are not enabled', () => {
     const pluginRoot = path.join(home, 'plug2');
     write(path.join(pluginRoot, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'off' }));
-    write(path.join(process.env.CLAUDE_CONFIG_DIR!, 'plugins', 'installed_plugins.json'), JSON.stringify({ plugins: { 'off@market': [{ scope: 'user', installPath: pluginRoot }] } }));
+    write(
+      path.join(process.env.CLAUDE_CONFIG_DIR!, 'plugins', 'installed_plugins.json'),
+      JSON.stringify({ plugins: { 'off@market': [{ scope: 'user', installPath: pluginRoot }] } }),
+    );
     const ext = loadExtensions({ cwd: root, root, settings: {} });
     expect(ext.plugins.length).toBe(0);
   });

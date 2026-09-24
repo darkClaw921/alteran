@@ -16,7 +16,10 @@ fs.writeFileSync(
   [
     JSON.stringify({ type: 'meta', id, cwd: dir, root: dir, model: 'ollama:test', createdAt: new Date().toISOString(), title: 'починить парсер' }),
     JSON.stringify({ type: 'message', message: { role: 'user', content: [{ type: 'text', text: 'починить парсер конфигурации' }] } }),
-    JSON.stringify({ type: 'message', message: { role: 'assistant', content: [{ type: 'text', text: 'Готово: парсер больше не падает на пустых секциях.' }] } }),
+    JSON.stringify({
+      type: 'message',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'Готово: парсер больше не падает на пустых секциях.' }] },
+    }),
   ].join('\n') + '\n',
 );
 

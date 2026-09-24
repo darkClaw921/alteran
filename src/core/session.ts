@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { alteranHome, projectSlug } from '../config/paths.js';
-import type { Message } from '../types.js';
+import { emptyUsage, type Message, type Usage } from '../types.js';
 
 export interface SessionMeta {
   type: 'meta';
@@ -14,7 +14,12 @@ export interface SessionMeta {
   title?: string;
 }
 
-type Line = SessionMeta | { type: 'message'; message: Message } | { type: 'reset'; reason: 'compact' | 'clear' };
+type Line =
+  | SessionMeta
+  | { type: 'message'; message: Message }
+  | { type: 'reset'; reason: 'compact' | 'clear' }
+  /** Running total for the whole session, rewritten each turn; the last one wins on load. */
+  | { type: 'usage'; usage: Usage };
 
 export interface SessionSummary {
   id: string;
@@ -33,9 +38,10 @@ export class SessionStore {
     private root: string,
     meta: Omit<SessionMeta, 'type' | 'id' | 'createdAt'>,
     id?: string,
+    /** Where the file lives; subagent transcripts sit in a folder beside their session. */
+    dir = SessionStore.dir(root),
   ) {
     this.id = id ?? crypto.randomUUID();
-    const dir = SessionStore.dir(root);
     fs.mkdirSync(dir, { recursive: true });
     this.file = path.join(dir, `${this.id}.jsonl`);
     if (!fs.existsSync(this.file)) {
@@ -47,6 +53,15 @@ export class SessionStore {
 
   static dir(root: string) {
     return path.join(alteranHome(), 'sessions', projectSlug(root));
+  }
+
+  /** Transcripts of the agents this session delegated to, one file per agent name. */
+  static agentDir(root: string, sessionId: string) {
+    return path.join(SessionStore.dir(root), `${sessionId}.agents`);
+  }
+
+  static forAgent(parent: SessionStore, name: string, meta: Omit<SessionMeta, 'type' | 'id' | 'createdAt'>): SessionStore {
+    return new SessionStore(meta.root, meta, name, SessionStore.agentDir(meta.root, parent.id));
   }
 
   private write(line: Line) {
@@ -66,14 +81,21 @@ export class SessionStore {
     this.write({ type: 'message', message });
   }
 
+  /** Remember what the session has spent, so resuming it does not start the meter at zero. */
+  recordUsage(usage: Usage) {
+    this.write({ type: 'usage', usage });
+  }
+
   reset(reason: 'compact' | 'clear') {
     this.write({ type: 'reset', reason });
   }
 
   /** Messages after the last reset marker. */
-  static load(file: string): { messages: Message[]; meta?: SessionMeta } {
+  static load(file: string): { messages: Message[]; meta?: SessionMeta; usage: Usage } {
     const messages: Message[] = [];
     let meta: SessionMeta | undefined;
+    // Spend survives a reset: the money was spent whatever happened to the transcript afterwards.
+    let usage = emptyUsage();
     for (const raw of fs.readFileSync(file, 'utf8').split('\n')) {
       if (!raw.trim()) continue;
       try {
@@ -81,9 +103,25 @@ export class SessionStore {
         if (line.type === 'meta') meta = meta ? { ...meta, title: line.title ?? meta.title } : line;
         else if (line.type === 'reset') messages.length = 0;
         else if (line.type === 'message') messages.push(line.message);
+        else if (line.type === 'usage') usage = line.usage;
       } catch {}
     }
-    return { messages: sanitizeHistory(messages), meta };
+    return { messages: sanitizeHistory(messages), meta, usage };
+  }
+
+  /** Transcripts of the agents a session delegated to, newest first. */
+  static agents(root: string, sessionId: string): SessionSummary[] {
+    const dir = SessionStore.agentDir(root, sessionId);
+    if (!fs.existsSync(dir)) return [];
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith('.jsonl'))
+      .map((f) => {
+        const file = path.join(dir, f);
+        const { messages, meta } = SessionStore.load(file);
+        return { id: f.replace(/\.jsonl$/, ''), file, title: meta?.title ?? '(no task)', updatedAt: fs.statSync(file).mtime, messages: messages.length };
+      })
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
   }
 
   static list(root: string): SessionSummary[] {

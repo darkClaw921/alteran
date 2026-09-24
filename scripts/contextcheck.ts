@@ -18,7 +18,12 @@ io.key('\r');
 await sleep(700);
 const rows = io.screen().split('\n');
 const vires = rows.findIndex((l) => l.includes('-- VIRES'));
-console.log(rows.slice(vires, vires + 5).map((l) => l.slice(100)).join('\n'));
+console.log(
+  rows
+    .slice(vires, vires + 5)
+    .map((l) => l.slice(100))
+    .join('\n'),
+);
 fs.rmSync(dir, { recursive: true, force: true });
 fs.rmSync(home, { recursive: true, force: true });
 process.exit(0);

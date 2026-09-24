@@ -1,76 +1,22 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { makeRuntime as scriptedRuntime, textTurn, toolTurn, until, useTempDirs, type ScriptedProvider } from './scripted.js';
+import { Agent } from '../src/core/agent.js';
 import { Runtime } from '../src/core/runtime.js';
-import { contextBar, contextBreakdown, formatContext } from '../src/core/context.js';
+import { parseDuration } from '../src/core/schedule.js';
+import { cacheLine, contextBar, contextBreakdown, formatContext } from '../src/core/context.js';
 import { runSlashCommand } from '../src/core/commands.js';
+import { TrackerStore } from '../src/tracker/store.js';
 import { mainSystemPrompt } from '../src/core/prompt.js';
 import { SessionStore } from '../src/core/session.js';
-import type { AgentEvent } from '../src/core/events.js';
-import type { Provider, ProviderRequest, StreamEvent } from '../src/types.js';
-import { emptyUsage } from '../src/types.js';
+import { emptyUsage, type Provider, type ProviderRequest, type StreamEvent } from '../src/types.js';
+import { runShell } from '../src/tools/bash.js';
+import { ok, type Tool } from '../src/tools/types.js';
 
-/** Provider that replays scripted turns and records the requests it received. */
-class ScriptedProvider implements Provider {
-  readonly id = 'scripted';
-  requests: ProviderRequest[] = [];
-  constructor(private turns: StreamEvent[][]) {}
-  async *stream(req: ProviderRequest): AsyncIterable<StreamEvent> {
-    this.requests.push({ ...req, messages: structuredClone(req.messages) });
-    const turn = this.turns.shift() ?? [
-      { type: 'done', message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] }, stopReason: 'end_turn', usage: emptyUsage() },
-    ];
-    for (const ev of turn) yield ev;
-  }
-}
-
-const toolTurn = (id: string, name: string, input: Record<string, unknown>): StreamEvent[] => [
-  { type: 'tool_use_start', id, name },
-  {
-    type: 'done',
-    message: { role: 'assistant', content: [{ type: 'tool_use', id, name, input }] },
-    stopReason: 'tool_use',
-    usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 0, cacheWriteTokens: 0 },
-  },
-];
-
-const textTurn = (text: string): StreamEvent[] => [
-  { type: 'text_delta', text },
-  {
-    type: 'done',
-    message: { role: 'assistant', content: [{ type: 'text', text }] },
-    stopReason: 'end_turn',
-    usage: { inputTokens: 120, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 },
-  },
-];
-
-let dir: string;
-let home: string;
-
-async function makeRuntime(turns: StreamEvent[][], mode: 'autonomous' | 'default' | 'plan' = 'autonomous') {
-  const rt = await Runtime.create({ cwd: dir, mode, noMcp: true, model: 'ollama:test' });
-  const provider = new ScriptedProvider(turns);
-  rt.registry.get = () => provider;
-  const events: AgentEvent[] = [];
-  rt.bus.on((e) => events.push(e));
-  return { rt, provider, events };
-}
-
-beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alteran-agent-'));
-  home = fs.mkdtempSync(path.join(os.tmpdir(), 'alteran-home-'));
-  process.env.ALTERAN_HOME = home;
-  process.env.CLAUDE_CONFIG_DIR = path.join(home, 'claude');
-  process.env.CODEX_HOME = path.join(home, 'codex');
-});
-afterEach(() => {
-  fs.rmSync(dir, { recursive: true, force: true });
-  fs.rmSync(home, { recursive: true, force: true });
-  delete process.env.ALTERAN_HOME;
-  delete process.env.CLAUDE_CONFIG_DIR;
-  delete process.env.CODEX_HOME;
-});
+const dirs = useTempDirs('agent');
+const makeRuntime = (turns: StreamEvent[][], mode: 'autonomous' | 'default' | 'plan' = 'autonomous') => scriptedRuntime(dirs, turns, mode);
+const dir = () => dirs.dir;
 
 describe('system prompt', () => {
   it('trims catalog entries and drops blocks the agent cannot use', async () => {
@@ -118,6 +64,55 @@ describe('sessions', () => {
     expect(SessionStore.list(second.rt.root).map((x) => x.id)).toContain(id);
   });
 
+  it('brings the spend along when a session is resumed', async () => {
+    const { rt } = await makeRuntime([textTurn('first answer')]);
+    await rt.main.send('hello', new AbortController().signal);
+    const spent = rt.sessionUsage();
+    expect(spent.outputTokens).toBeGreaterThan(0);
+
+    // A fresh process resuming by id: the meter carries on rather than restarting at zero.
+    const later = await Runtime.create({ cwd: dirs.dir, mode: 'autonomous', noMcp: true, model: 'ollama:test', resume: rt.session.id });
+    expect(later.sessionUsage().outputTokens).toBe(spent.outputTokens);
+    expect(later.sessionUsage().inputTokens).toBe(spent.inputTokens);
+
+    // And resuming it from inside another running session adopts that session's spend, not both.
+    const other = await makeRuntime([textTurn('elsewhere')]);
+    await other.rt.main.send('unrelated', new AbortController().signal);
+    other.rt.resumeSession(rt.session.file);
+    expect(other.rt.sessionUsage().outputTokens).toBe(spent.outputTokens);
+  }, 20000);
+
+  it('survives a transcript written before spend was recorded', async () => {
+    const { rt } = await makeRuntime([textTurn('ok')]);
+    await rt.main.send('hello', new AbortController().signal);
+    // An older session: messages, no usage line, plus a line this version cannot parse at all.
+    const stripped = fs
+      .readFileSync(rt.session.file, 'utf8')
+      .split('\n')
+      .filter((l) => l && !l.includes('"type":"usage"'))
+      .concat('{not json', '{"type":"usage"')
+      .join('\n');
+    fs.writeFileSync(rt.session.file, stripped + '\n');
+
+    const later = await Runtime.create({ cwd: dirs.dir, mode: 'autonomous', noMcp: true, model: 'ollama:test', resume: rt.session.id });
+    expect(later.sessionUsage().outputTokens).toBe(0);
+    expect(later.main.messages).toHaveLength(2);
+  }, 20000);
+
+  it('keeps the spend across a cleared conversation', async () => {
+    const { rt } = await makeRuntime([textTurn('one'), textTurn('two')]);
+    await rt.main.send('hello', new AbortController().signal);
+    const before = rt.sessionUsage().outputTokens;
+    rt.session.reset('clear');
+    rt.main.messages = [];
+    await rt.main.send('fresh start', new AbortController().signal);
+
+    // The money was spent whatever happened to the transcript, so resuming must not forget it.
+    const later = await Runtime.create({ cwd: dirs.dir, mode: 'autonomous', noMcp: true, model: 'ollama:test', resume: rt.session.id });
+    expect(later.sessionUsage().outputTokens).toBeGreaterThan(before);
+    expect(later.main.messages).toHaveLength(2);
+  }, 20000);
+
   it('resolves /resume by id prefix', async () => {
     const { rt } = await makeRuntime([textTurn('ok')]);
     await rt.main.send('hello', new AbortController().signal);
@@ -128,7 +123,7 @@ describe('sessions', () => {
 
 describe('context breakdown', () => {
   it('splits the window into system, tools and conversation', async () => {
-    fs.writeFileSync(path.join(dir, 'ALTERAN.md'), '# Project\n' + 'Follow the house style.\n'.repeat(40));
+    fs.writeFileSync(path.join(dir(), 'ALTERAN.md'), '# Project\n' + 'Follow the house style.\n'.repeat(40));
     const { rt } = await makeRuntime([textTurn('ok')]);
     const before = contextBreakdown(rt);
     const part = (r: typeof before, key: string) => r.parts.find((p) => p.key === key)!;
@@ -169,7 +164,7 @@ describe('agent loop', () => {
     ]);
     const out = await rt.main.send('create hello.txt', new AbortController().signal);
     expect(out).toBe('All set.');
-    expect(fs.readFileSync(path.join(dir, 'hello.txt'), 'utf8')).toBe('hi there');
+    expect(fs.readFileSync(path.join(dir(), 'hello.txt'), 'utf8')).toBe('hi there');
 
     const lastRequest = provider.requests.at(-1)!;
     const resultBlocks = lastRequest.messages.flatMap((m) => m.content.filter((b) => b.type === 'tool_result'));
@@ -191,7 +186,7 @@ describe('agent loop', () => {
     await rt.main.send('write', new AbortController().signal);
     const results = provider.requests.at(-1)!.messages.flatMap((m) => m.content.filter((b) => b.type === 'tool_result'));
     expect(JSON.stringify(results[0])).toContain('Plan mode');
-    expect(fs.existsSync(path.join(dir, 'x.txt'))).toBe(false);
+    expect(fs.existsSync(path.join(dir(), 'x.txt'))).toBe(false);
   });
 
   it('denies unapproved actions in headless default mode with an actionable hint', async () => {
@@ -212,9 +207,13 @@ describe('agent loop', () => {
       textTurn('created'),
     ]);
     await rt.main.send('plan it', new AbortController().signal);
-    const jsonl = path.join(dir, '.beads', 'issues.jsonl');
+    const jsonl = path.join(dir(), '.beads', 'issues.jsonl');
     expect(fs.existsSync(jsonl)).toBe(true);
-    const created = fs.readFileSync(jsonl, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const created = fs
+      .readFileSync(jsonl, 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
     expect(created.some((i) => i.title === 'Phase 1: Core' && i.issue_type === 'epic')).toBe(true);
     const results = provider.requests.at(-1)!.messages.flatMap((m) => m.content.filter((b) => b.type === 'tool_result'));
     expect(JSON.stringify(results[0])).toContain('Created');
@@ -228,7 +227,7 @@ describe('agent loop', () => {
     ]);
     const provider = rt.registry.get('any') as ScriptedProvider;
     // Subagent turn is served by the same scripted provider: queue its reply.
-    (provider as unknown as { turns: StreamEvent[][] }).turns = [
+    provider.turns = [
       toolTurn('t1', 'Task', { description: 'check', prompt: 'say hi', subagent_type: 'general-purpose' }),
       textTurn('subagent report'),
       textTurn('relayed'),
@@ -237,6 +236,127 @@ describe('agent loop', () => {
     expect(out).toBe('relayed');
     const toolResults = provider.requests.at(-1)!.messages.flatMap((m) => m.content.filter((b) => b.type === 'tool_result'));
     expect(JSON.stringify(toolResults[0])).toContain('subagent report');
+  });
+
+  it('hands a background Task back at once instead of waiting for it', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(
+      toolTurn('t1', 'Task', { description: 'scan', prompt: 'scan the repo', subagent_type: 'general-purpose', background: true }),
+      textTurn('background report'),
+      textTurn('launched'),
+    );
+    await rt.main.send('delegate', new AbortController().signal);
+    // The Task result carries the agent's name, not its findings — that is what background means.
+    const launch = JSON.stringify(provider.requests[2].messages.at(-1));
+    expect(launch).toContain('in the background');
+    expect(launch).not.toContain('background report');
+  });
+
+  it('delivers a background report to an orchestrator that has gone idle', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(textTurn('found three things'), textTurn('relayed'));
+    const run = rt.agents.spawn({
+      agentType: 'general-purpose',
+      description: 'scan',
+      prompt: 'scan',
+      parent: rt.main,
+      signal: new AbortController().signal,
+      background: true,
+    });
+    await run.turn;
+    // Nothing was running when it finished, so the report waits for the orchestrator's next turn.
+    expect(rt.main.pendingContext.join('\n')).toContain('found three things');
+    await rt.main.send('what did it find?', new AbortController().signal);
+    expect(JSON.stringify(provider.requests.at(-1)!.messages)).toContain('<task-notification>');
+  });
+
+  it('continues an agent with SendMessage instead of starting a new one', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(
+      toolTurn('t1', 'Task', { description: 'half one', prompt: 'do the first half', subagent_type: 'general-purpose' }),
+      textTurn('first report'),
+      toolTurn('t2', 'SendMessage', { to: 'general-purpose-1', message: 'now the second half' }),
+      textTurn('second report'),
+      textTurn('relayed'),
+    );
+    const out = await rt.main.send('go', new AbortController().signal);
+    expect(out).toBe('relayed');
+    expect(rt.agents.list()).toHaveLength(1);
+    // The continued agent still has its first exchange, so the orchestrator need not repeat it.
+    const resumed = JSON.stringify(provider.requests[3].messages);
+    expect(resumed).toContain('do the first half');
+    expect(resumed).toContain('first report');
+    expect(resumed).toContain('now the second half');
+  });
+
+  it('queues a message for an agent that is still working', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(toolTurn('x1', 'Read', { file_path: 'nope.txt' }), textTurn('done'));
+    const ac = new AbortController();
+    const run = rt.agents.spawn({ agentType: 'general-purpose', description: 'a', prompt: 'work', parent: rt.main, signal: ac.signal, background: true });
+    await expect(rt.agents.deliver(run.name, 'prefer the fast path', ac.signal)).resolves.toBe('queued');
+    expect(run.agent.pendingContext.join(' ')).toContain('prefer the fast path');
+    await run.turn;
+  });
+
+  it('budgets nesting by depth instead of forbidding it', async () => {
+    const { rt } = await makeRuntime([]);
+    const child = new Agent({ runtime: rt, label: 'child', model: rt.model, system: '', parent: rt.main });
+    const grandchild = new Agent({ runtime: rt, label: 'grandchild', model: rt.model, system: '', parent: child });
+    const names = (a: Agent) => rt.toolsFor(a).map((t) => t.name);
+    expect(names(rt.main)).toContain('Task');
+    expect(names(child)).toContain('Task');
+    expect(names(grandchild)).not.toContain('Task');
+    // Talking to the user stays with the orchestrator at every depth.
+    expect(names(child)).not.toContain('AskUserQuestion');
+  });
+
+  it('honours the tool list an agent definition declares', async () => {
+    const { rt } = await makeRuntime([]);
+    const explore = new Agent({ runtime: rt, label: 'Explore', def: rt.resolveAgentDef('Explore'), model: rt.model, system: '', parent: rt.main });
+    const names = rt.toolsFor(explore).map((t) => t.name);
+    expect(names).toContain('Grep');
+    // Explore is declared read-only, so it does not get to delegate or to write.
+    expect(names).not.toContain('Task');
+    expect(names).not.toContain('Write');
+  });
+
+  it('refuses to launch past the concurrency limit', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(toolTurn('x1', 'Read', { file_path: 'nope.txt' }), textTurn('done'));
+    rt.settings.agents = { maxConcurrent: 1 };
+    const ac = new AbortController();
+    const req = { agentType: 'general-purpose', description: 'a', prompt: 'work', parent: rt.main, signal: ac.signal, background: true };
+    const run = rt.agents.spawn(req);
+    expect(() => rt.agents.spawn({ ...req, description: 'b' })).toThrow(/already running/);
+    await run.turn;
+  });
+
+  it('stops one agent without touching the others', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(toolTurn('x1', 'Read', { file_path: 'nope.txt' }), toolTurn('y1', 'Read', { file_path: 'nope.txt' }), textTurn('survivor'));
+    const ac = new AbortController();
+    const req = { agentType: 'general-purpose', description: 'a', prompt: 'work', parent: rt.main, signal: ac.signal, background: true };
+    const doomed = rt.agents.spawn(req);
+    const other = rt.agents.spawn({ ...req, description: 'b' });
+    rt.agents.stop(doomed.name);
+    expect((await doomed.turn).state).toBe('stopped');
+    expect((await other.turn).state).toBe('done');
+  });
+
+  it('writes each agent transcript beside the session', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(
+      toolTurn('t1', 'Task', { description: 'check', prompt: 'look around', subagent_type: 'general-purpose' }),
+      textTurn('agent report'),
+      textTurn('relayed'),
+    );
+    await rt.main.send('delegate', new AbortController().signal);
+    const file = path.join(SessionStore.agentDir(rt.root, rt.session.id), 'general-purpose-1.jsonl');
+    expect(fs.existsSync(file)).toBe(true);
+    const { messages } = SessionStore.load(file);
+    expect(JSON.stringify(messages)).toContain('look around');
+    expect(JSON.stringify(messages)).toContain('agent report');
   });
 
   it('stops cleanly when interrupted', async () => {
@@ -251,7 +371,633 @@ describe('agent loop', () => {
     await rt.main.send('remember this', new AbortController().signal);
     const file = rt.session.file;
     expect(fs.readFileSync(file, 'utf8')).toContain('remember this');
-    const rt2 = await Runtime.create({ cwd: dir, noMcp: true, model: 'ollama:test', resume: 'last' });
+    const rt2 = await Runtime.create({ cwd: dir(), noMcp: true, model: 'ollama:test', resume: 'last' });
     expect(JSON.stringify(rt2.main.messages)).toContain('remember this');
+  });
+});
+
+describe('phased execution', () => {
+  /** Run `/run-phase <id>`, optionally closing the phase's work while the "agent" is busy. */
+  const runPhase = async (rt: Runtime, arg: string, duringRun?: () => void) => {
+    const cmd = await runSlashCommand(rt, `/run-phase ${arg}`);
+    expect(cmd.kind).toBe('task');
+    duringRun?.();
+    await (cmd as { run: (s: AbortSignal) => Promise<unknown> }).run(new AbortController().signal);
+    return rt.main.pendingContext.join('\n');
+  };
+
+  it('points at the next open phase instead of handing the loop back to the user', async () => {
+    const store = TrackerStore.init(dirs.dir, 'demo');
+    const one = store.create({ title: 'Phase 1: Ядро', type: 'epic' });
+    store.create({ title: 'Phase 2: TUI', type: 'epic' });
+    const task = store.create({ title: 'task', parent: one.id });
+
+    const { rt } = await makeRuntime([textTurn('phase one done')]);
+    const handover = await runPhase(rt, '1', () => {
+      store.close(task.id, 'done');
+      store.close(one.id, 'done');
+    });
+    expect(handover).toContain('phase one done');
+    expect(handover).toContain('Phase 2: TUI');
+    expect(handover).toContain('without asking the user');
+  }, 20000);
+
+  it('says the work is over when no phase is left', async () => {
+    const store = TrackerStore.init(dirs.dir, 'demo');
+    const only = store.create({ title: 'Phase 1: Ядро', type: 'epic' });
+    const task = store.create({ title: 'task', parent: only.id });
+
+    const { rt } = await makeRuntime([textTurn('done')]);
+    const handover = await runPhase(rt, '1', () => {
+      store.close(task.id, 'done');
+      store.close(only.id, 'done');
+    });
+    expect(handover).toContain('Every phase is closed.');
+  }, 20000);
+
+  it('sends it back to an unfinished phase rather than on to the next one', async () => {
+    const store = TrackerStore.init(dirs.dir, 'demo');
+    const one = store.create({ title: 'Phase 1: Ядро', type: 'epic' });
+    store.create({ title: 'Phase 2: TUI', type: 'epic' });
+    store.create({ title: 'task nobody closed', parent: one.id });
+
+    const { rt } = await makeRuntime([textTurn('ran out of ideas')]);
+    const handover = await runPhase(rt, '1');
+    expect(handover).toContain('Phase 1: Ядро is still open');
+    expect(handover).not.toContain('Phase 2: TUI');
+  }, 20000);
+
+  it('refuses a phase whose predecessors still have open tasks', async () => {
+    const store = TrackerStore.init(dirs.dir, 'demo');
+    const one = store.create({ title: 'Phase 1: Ядро', type: 'epic' });
+    const two = store.create({ title: 'Phase 2: TUI', type: 'epic' });
+    store.create({ title: 'unfinished', parent: one.id });
+    store.create({ title: 'later', parent: two.id });
+
+    const { rt } = await makeRuntime([]);
+    const res = await runSlashCommand(rt, '/run-phase 2');
+    expect(res.kind).toBe('error');
+    expect((res as { text: string }).text).toContain('unfinished');
+  });
+});
+
+describe('provider failures', () => {
+  /** A provider that fails the first `failures` calls, then defers to the script. */
+  const flaky = (inner: ScriptedProvider, failures: number, make: () => Error) => {
+    let calls = 0;
+    const provider = {
+      id: 'flaky',
+      async *stream(req: ProviderRequest) {
+        if (calls++ < failures) throw make();
+        yield* inner.stream(req);
+      },
+      calls: () => calls,
+    };
+    return provider;
+  };
+
+  const status = (code: number, message: string) => () => Object.assign(new Error(message), { status: code });
+
+  it('retries a gateway that fumbles a tool call instead of ending the turn', async () => {
+    const { rt, provider } = await makeRuntime([textTurn('recovered')]);
+    // What polza answers when the model emits a tool call it cannot parse — in its own language.
+    const f = flaky(provider, 1, status(400, 'Провайдер вернул некорректный вызов инструмента.'));
+    rt.registry.get = () => f;
+    expect(await rt.main.send('go', new AbortController().signal)).toBe('recovered');
+    expect(f.calls()).toBe(2);
+  }, 20000);
+
+  it('retries a timeout, and a subagent survives one too', async () => {
+    const { rt, provider } = await makeRuntime([textTurn('found it')]);
+    const f = flaky(provider, 1, () => new Error('Request timed out.'));
+    rt.registry.get = () => f;
+    const result = await rt.runSubagent({ agentType: 'general-purpose', description: 'x', prompt: 'x', parent: rt.main, signal: new AbortController().signal });
+    expect(result.state).toBe('done');
+    expect(result.report).toContain('found it');
+  }, 20000);
+
+  it('retries a gateway that says only that it broke', async () => {
+    const { rt, provider } = await makeRuntime([textTurn('recovered')]);
+    // polza's own wording, and it does not always come with a 5xx.
+    const f = flaky(provider, 1, status(400, 'Произошла внутренняя ошибка. Повторите попытку позже.'));
+    rt.registry.get = () => f;
+    expect(await rt.main.send('go', new AbortController().signal)).toBe('recovered');
+    expect(f.calls()).toBe(2);
+  }, 20000);
+
+  it('carries a mid-stream provider error out instead of reporting an empty stream', async () => {
+    const { rt } = await makeRuntime([]);
+    const broken: Provider = {
+      id: 'broken',
+      async *stream() {
+        yield { type: 'text_delta', text: 'thinking about it' } as StreamEvent;
+        throw Object.assign(new Error('Внутренняя ошибка сервиса'), { status: 500 });
+      },
+    };
+    rt.registry.get = () => broken;
+    // Four attempts, all failing: what reaches the caller is the gateway's words, not ours.
+    await expect(rt.main.send('go', new AbortController().signal)).rejects.toThrow(/Внутренняя ошибка сервиса/);
+  }, 40000);
+
+  it('gives up on an error that retrying cannot fix', async () => {
+    const { rt, provider } = await makeRuntime([textTurn('never reached')]);
+    const f = flaky(provider, 1, status(401, 'Invalid API key'));
+    rt.registry.get = () => f;
+    await expect(rt.main.send('go', new AbortController().signal)).rejects.toThrow(/Invalid API key/);
+    expect(f.calls()).toBe(1);
+  });
+
+  it('stops retrying once the attempts run out', async () => {
+    const { rt, provider } = await makeRuntime([textTurn('never reached')]);
+    const f = flaky(provider, 99, status(503, 'upstream unavailable'));
+    rt.registry.get = () => f;
+    await expect(rt.main.send('go', new AbortController().signal)).rejects.toThrow(/unavailable/);
+    expect(f.calls()).toBe(4);
+  }, 40000);
+});
+
+describe('deferred work', () => {
+  it('reads the durations a person would type', () => {
+    expect(parseDuration('45s')).toBe(45_000);
+    expect(parseDuration('10m')).toBe(600_000);
+    expect(parseDuration('1h30m')).toBe(5_400_000);
+    expect(parseDuration('90')).toBe(90_000);
+    expect(() => parseDuration('soon')).toThrow(/Cannot read duration/);
+  });
+
+  it('delivers a scheduled reminder as a system event, not as the user speaking', async () => {
+    const { rt } = await makeRuntime([]);
+    const woken: string[] = [];
+    rt.onWake = (_id, text) => woken.push(text);
+    const item = rt.schedule.create({ kind: 'prompt', in: '1s', message: 'check the build' });
+    expect(item.state).toBe('waiting');
+    const text = await until(() => woken[0]);
+    expect(text).toContain('<scheduled-task>');
+    expect(text).toContain('not a message from the user');
+    expect(text).toContain('check the build');
+    expect(rt.schedule.list()[0].state).toBe('done');
+  });
+
+  it('delivers a scheduled message to a finished agent', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(textTurn('first pass'), textTurn('second pass'));
+    const run = rt.agents.spawn({
+      agentType: 'general-purpose',
+      description: 'a',
+      prompt: 'look',
+      parent: rt.main,
+      signal: new AbortController().signal,
+      background: true,
+    });
+    await run.turn;
+    const woken: string[] = [];
+    rt.onWake = (_id, text) => woken.push(text);
+    rt.schedule.create({ kind: 'message', in: '1s', to: run.name, message: 'check again' });
+    await until(() => JSON.stringify(run.agent.messages).includes('check again'));
+    expect(JSON.stringify(run.agent.messages)).toContain('look');
+  });
+
+  it('re-arms a repeating item and stops when cancelled', async () => {
+    const { rt } = await makeRuntime([]);
+    const woken: string[] = [];
+    rt.onWake = (_id, text) => woken.push(text);
+    const item = rt.schedule.create({ kind: 'prompt', in: '1s', every: '1h', message: 'poll it' });
+    await until(() => woken.length > 0);
+    expect(item.runs).toBe(1);
+    expect(item.state).toBe('waiting');
+    rt.schedule.cancel(item.id);
+    expect(item.state).toBe('cancelled');
+  });
+
+  it('never fires a cancelled reminder', async () => {
+    const { rt } = await makeRuntime([]);
+    const woken: string[] = [];
+    rt.onWake = (_id, text) => woken.push(text);
+    const item = rt.schedule.create({ kind: 'prompt', in: '1s', message: 'should not arrive' });
+    rt.schedule.cancel(item.id);
+    await new Promise((r) => setTimeout(r, 1300));
+    expect(woken).toEqual([]);
+    expect(item.state).toBe('cancelled');
+  });
+
+  it('lets an agent defer its own check and wakes it when the time comes', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    rt.ui = {};
+    const woken: string[] = [];
+    rt.onWake = (_id, text) => woken.push(text);
+    provider.turns.push(
+      toolTurn('t1', 'Task', { description: 'build', prompt: 'kick off the build', subagent_type: 'general-purpose' }),
+      toolTurn('a1', 'Schedule', { kind: 'prompt', in: '1s', message: 'check the build again' }),
+      textTurn('build started, will check back'),
+      textTurn('relayed'),
+      textTurn('build is green'),
+    );
+    expect(await rt.main.send('build it', new AbortController().signal)).toBe('relayed');
+
+    // The reminder goes back to the agent that set it, with its context intact.
+    const resumed = await until(() => provider.requests.find((r) => JSON.stringify(r.messages).includes('<scheduled-task>')));
+    const history = JSON.stringify(resumed.messages);
+    expect(history).toContain('check the build again');
+    expect(history).toContain('kick off the build');
+    // What it finds afterwards reaches the orchestrator like any other background report.
+    const text = await until(() => woken.find((w) => w.includes('build is green')));
+    expect(text).toContain('<task-notification>');
+  });
+
+  it('keeps each agent to its own deferred work', async () => {
+    const { rt } = await makeRuntime([]);
+    const mine = rt.schedule.create({ kind: 'prompt', in: '1h', message: 'orchestrator item' });
+    const theirs = rt.schedule.create({ kind: 'prompt', in: '1h', message: 'agent item', owner: 'agent-1', ownerName: 'Explore-1' });
+    expect(rt.schedule.list('agent-1').map((i) => i.id)).toEqual([theirs.id]);
+    // The orchestrator oversees everything; an agent sees only what it set up.
+    expect(
+      rt.schedule
+        .list('main')
+        .map((i) => i.id)
+        .sort(),
+    ).toEqual([mine.id, theirs.id].sort());
+    expect(() => rt.schedule.cancel(mine.id, 'agent-1')).toThrow(/No scheduled item/);
+    expect(rt.schedule.cancel(theirs.id, 'agent-1').state).toBe('cancelled');
+  });
+
+  it('drops what a stopped agent had deferred', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(toolTurn('x1', 'Read', { file_path: 'nope.txt' }), textTurn('done'));
+    const ac = new AbortController();
+    const run = rt.agents.spawn({ agentType: 'general-purpose', description: 'a', prompt: 'work', parent: rt.main, signal: ac.signal, background: true });
+    const item = rt.schedule.create({ kind: 'prompt', in: '1h', message: 'later', owner: run.agent.id, ownerName: run.name });
+    rt.agents.stop(run.name);
+    expect(item.state).toBe('cancelled');
+    await run.turn;
+  });
+
+  it('does not resurrect an item that already ran', async () => {
+    const { rt } = await makeRuntime([]);
+    rt.onWake = () => {};
+    const item = rt.schedule.create({ kind: 'prompt', in: '1s', message: 'once' });
+    await until(() => item.state === 'done');
+    expect(rt.schedule.cancel(item.id).state).toBe('done');
+    expect(item.runs).toBe(1);
+  });
+
+  it('refuses to defer work in a run that ends as soon as it answers', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(toolTurn('t1', 'Schedule', { kind: 'prompt', in: '1m', message: 'later' }), textTurn('ok'));
+    await rt.main.send('remind me later', new AbortController().signal);
+    const result = JSON.stringify(provider.requests.at(-1)!.messages.flatMap((m) => m.content.filter((b) => b.type === 'tool_result')));
+    expect(result).toContain('needs an interactive session');
+    expect(rt.schedule.list()).toHaveLength(0);
+  });
+});
+
+describe('tool execution limits', () => {
+  /** Swap in a probe tool so a test can hold calls open and watch how they are run. */
+  function addProbe(rt: Runtime, tool: Tool<any>) {
+    const all = rt.allTools.bind(rt);
+    (rt as unknown as { allTools: () => Tool<any>[] }).allTools = () => [...all(), tool];
+  }
+
+  /** One assistant turn that asks for the same tool n times over. */
+  const manyCalls = (name: string, n: number): StreamEvent[] => [
+    {
+      type: 'done',
+      message: {
+        role: 'assistant',
+        content: Array.from({ length: n }, (_, i) => ({ type: 'tool_use' as const, id: `${name}-${i}`, name, input: {} })),
+      },
+      stopReason: 'tool_use',
+      usage: emptyUsage(),
+    },
+  ];
+
+  const resultBlocks = (provider: ScriptedProvider) => provider.requests.at(-1)!.messages.flatMap((m) => m.content.filter((b) => b.type === 'tool_result'));
+
+  it('caps how many read-only calls run at once', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    let active = 0;
+    let peak = 0;
+    addProbe(rt, {
+      name: 'Probe',
+      description: 'probe',
+      category: 'read',
+      readOnly: true,
+      jsonSchema: { type: 'object' },
+      summarize: () => '',
+      async run() {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise((r) => setTimeout(r, 15));
+        active--;
+        return ok('pong');
+      },
+    });
+    provider.turns.push(manyCalls('Probe', 20), textTurn('done'));
+    await rt.main.send('probe', new AbortController().signal);
+    // Parallel, but never wider than the cap; every call still gets its own result.
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(8);
+    expect(resultBlocks(provider)).toHaveLength(20);
+  });
+
+  it('fails a call that outstays its timeout without stalling the batch', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    addProbe(rt, {
+      name: 'Hang',
+      description: 'never returns on its own',
+      category: 'read',
+      readOnly: true,
+      timeoutMs: 40,
+      jsonSchema: { type: 'object' },
+      summarize: () => '',
+      run: (_input, ctx) =>
+        new Promise((_resolve, reject) => {
+          ctx.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        }),
+    });
+    provider.turns.push(manyCalls('Hang', 2), textTurn('done'));
+    await rt.main.send('hang', new AbortController().signal);
+    const results = resultBlocks(provider);
+    expect(results).toHaveLength(2);
+    for (const r of results) expect(String(r.content)).toContain('timed out');
+  });
+});
+
+describe('shell working directory', () => {
+  it('keeps a foreground cd, but a deferred run leaves it alone', async () => {
+    const { rt } = await makeRuntime([]);
+    const sub = path.join(dir(), 'sub');
+    fs.mkdirSync(sub, { recursive: true });
+    await runShell(rt, `cd ${sub}`, {});
+    expect(fs.realpathSync(rt.cwd)).toBe(fs.realpathSync(sub));
+    // Deferred work runs as the agent but must not move the directory the user is working in.
+    await rt.main.runDirect('Bash', { command: `cd ${dir()}` }, new AbortController().signal);
+    expect(fs.realpathSync(rt.cwd)).toBe(fs.realpathSync(sub));
+  });
+
+  it('does not let a slow shell undo a newer move', async () => {
+    const { rt } = await makeRuntime([]);
+    const x = path.join(dir(), 'x');
+    const y = path.join(dir(), 'y');
+    fs.mkdirSync(x, { recursive: true });
+    fs.mkdirSync(y, { recursive: true });
+    const slow = runShell(rt, `sleep 0.2; cd ${x}`, {});
+    await runShell(rt, `cd ${y}`, {});
+    await slow;
+    // The first shell started before the move and finished after it; its `pwd` is stale.
+    expect(fs.realpathSync(rt.cwd)).toBe(fs.realpathSync(y));
+  });
+});
+
+describe('microcompaction', () => {
+  function writeSettings(settings: unknown) {
+    fs.mkdirSync(path.join(dir(), '.alteran'), { recursive: true });
+    fs.writeFileSync(path.join(dir(), '.alteran', 'settings.json'), JSON.stringify(settings));
+  }
+
+  /** A tool turn whose prompt is large enough to push the window over a trimming threshold. */
+  const heavyTurn = (id: string, inputTokens: number): StreamEvent[] => [
+    { type: 'tool_use_start', id, name: 'Read' },
+    {
+      type: 'done',
+      message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Read', input: { file_path: 'big.txt' } }] },
+      stopReason: 'tool_use',
+      usage: { inputTokens, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    },
+  ];
+
+  it('elides old tool results, keeps the recent ones and leaves every call paired', async () => {
+    // A 2k window trimmed from 50%: the trigger sits well below the full-compaction threshold.
+    writeSettings({
+      providers: { ollama: { type: 'openai-compat', models: { test: { contextWindow: 2000 } } } },
+      microcompact: { keepRecent: 1, threshold: 0.5 },
+    });
+    fs.writeFileSync(path.join(dir(), 'big.txt'), 'x'.repeat(400));
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(heavyTurn('a', 1100), heavyTurn('b', 1100), textTurn('done'));
+    await rt.main.send('read it twice', new AbortController().signal);
+
+    const messages = provider.requests.at(-1)!.messages;
+    const results = messages.flatMap((m) => m.content.filter((b) => b.type === 'tool_result'));
+    expect(results).toHaveLength(2);
+    expect(String(results[0].content)).toContain('elided');
+    expect(String(results[1].content)).toContain('xxxx');
+    // Eliding rewrites content in place, so no call is left without its answer.
+    const uses = messages.flatMap((m) => m.content.filter((b) => b.type === 'tool_use')).map((b) => b.id);
+    expect(uses).toHaveLength(2);
+    expect(results.map((r) => r.toolUseId)).toEqual(uses);
+  });
+
+  it('leaves history byte-identical until the saving is worth the cache it costs', async () => {
+    const { rt } = await makeRuntime([]);
+    const stale = (n: number) => ({ role: 'user' as const, content: [{ type: 'tool_result' as const, toolUseId: `t${n}`, content: 'x'.repeat(2000) }] });
+    // Default window is 200k tokens, so the floor is ~4k tokens: a handful of results is under it.
+    rt.main.messages = [stale(1), stale(2), stale(3)];
+    const before = JSON.stringify(rt.main.messages);
+    rt.settings.microcompact = { keepRecent: 0 };
+    expect(rt.main.microcompact()).toBe(0);
+    expect(JSON.stringify(rt.main.messages)).toBe(before);
+
+    // Enough to matter: now it takes everything stale in one rewrite rather than a little each turn.
+    rt.main.messages = Array.from({ length: 12 }, (_, i) => stale(i));
+    expect(rt.main.microcompact()).toBeGreaterThan(0);
+    const left = rt.main.messages.flatMap((m) => m.content).filter((b) => b.type === 'tool_result' && String(b.content).includes('xxxx'));
+    expect(left).toHaveLength(0);
+    // A second pass finds nothing new, so the prefix stops moving.
+    expect(rt.main.microcompact()).toBe(0);
+  });
+
+  it('leaves a history whose results are all still recent alone', async () => {
+    const { rt } = await makeRuntime([]);
+    rt.main.messages = [{ role: 'user', content: [{ type: 'tool_result', toolUseId: 'a', content: 'x'.repeat(500) }] }];
+    expect(rt.main.microcompact()).toBe(0);
+  });
+});
+
+describe('session budget', () => {
+  function writeSettings(settings: unknown) {
+    fs.mkdirSync(path.join(dir(), '.alteran'), { recursive: true });
+    fs.writeFileSync(path.join(dir(), '.alteran', 'settings.json'), JSON.stringify(settings));
+  }
+
+  it('warns once when the session passes its token limit', async () => {
+    writeSettings({ budget: { tokens: 10 } });
+    const { rt, events } = await makeRuntime([textTurn('one'), textTurn('two')]);
+    await rt.main.send('first', new AbortController().signal);
+    await rt.main.send('second', new AbortController().signal);
+    const notices = events.filter((e) => e.type === 'notice' && e.text.includes('Session budget reached'));
+    expect(notices).toHaveLength(1);
+  });
+
+  it('stops the turn and refuses the next one when onExceed is stop', async () => {
+    writeSettings({ budget: { tokens: 10, onExceed: 'stop' } });
+    const { rt, provider } = await makeRuntime([textTurn('one'), textTurn('two')]);
+    await rt.main.send('first', new AbortController().signal);
+    const out = await rt.main.send('second', new AbortController().signal);
+    expect(out).toContain('session budget reached');
+    // The limit is checked before the model is called, so the second request never leaves.
+    expect(provider.requests).toHaveLength(1);
+  });
+
+  it('lets a cleared conversation carry on without forgetting what it cost', async () => {
+    writeSettings({ budget: { tokens: 10, onExceed: 'stop' } });
+    const { rt } = await makeRuntime([textTurn('one'), textTurn('two')]);
+    await rt.main.send('first', new AbortController().signal);
+    const spent = rt.sessionUsage();
+    expect(rt.budgetCheck().state).toBe('stop');
+
+    rt.clearConversation();
+    // The limit starts over from here — otherwise the advice in the stop notice would be a lie.
+    expect(rt.budgetCheck().state).toBe('ok');
+    // The money is still spent, and a session that forgets that cannot report what it cost.
+    expect(rt.sessionUsage().outputTokens).toBe(spent.outputTokens);
+    expect(rt.sessionUsage().inputTokens).toBe(spent.inputTokens);
+
+    // And the next turn really runs.
+    await rt.main.send('second', new AbortController().signal);
+    expect(rt.sessionUsage().outputTokens).toBeGreaterThan(spent.outputTokens);
+  }, 20000);
+
+  it('counts a resumed session against the whole limit again', async () => {
+    writeSettings({ budget: { tokens: 10, onExceed: 'stop' } });
+    const { rt } = await makeRuntime([textTurn('one')]);
+    await rt.main.send('first', new AbortController().signal);
+    const file = rt.session.file;
+
+    const fresh = await makeRuntime([textTurn('elsewhere')]);
+    fresh.rt.resumeSession(file);
+    // Spend carried over, so a session already past its limit is still past it after a resume.
+    expect(fresh.rt.budgetCheck().state).toBe('stop');
+  }, 20000);
+
+  it('leaves a session with no budget alone', async () => {
+    const { rt, events } = await makeRuntime([textTurn('one'), textTurn('two')]);
+    await rt.main.send('first', new AbortController().signal);
+    await rt.main.send('second', new AbortController().signal);
+    expect(events.some((e) => e.type === 'notice' && e.text.includes('Session budget'))).toBe(false);
+    expect(rt.budgetCheck().state).toBe('ok');
+  });
+});
+
+describe('prompt cache', () => {
+  /**
+   * Caching is a prefix match: tools render first, then system, then messages. A request may only
+   * ever append to what the previous one sent — anything else throws the whole cache away.
+   */
+  function expectStablePrefix(requests: ProviderRequest[]) {
+    for (let i = 1; i < requests.length; i++) {
+      const prev = requests[i - 1];
+      const next = requests[i];
+      expect(JSON.stringify(next.tools), `tools changed before request ${i}`).toBe(JSON.stringify(prev.tools));
+      expect(next.system, `system changed before request ${i}`).toBe(prev.system);
+      expect(next.reasoning, `reasoning changed before request ${i}`).toBe(prev.reasoning);
+      const shared = JSON.stringify(prev.messages);
+      const grown = JSON.stringify(next.messages.slice(0, prev.messages.length));
+      expect(grown, `history was rewritten before request ${i}`).toBe(shared);
+    }
+  }
+
+  it('only ever appends to the prefix across a tool loop', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(toolTurn('t1', 'Read', { file_path: 'nope.txt' }), toolTurn('t2', 'Glob', { pattern: '*.ts' }), textTurn('done'));
+    await rt.main.send('look around', new AbortController().signal);
+    expect(provider.requests.length).toBe(3);
+    expectStablePrefix(provider.requests);
+  });
+
+  it('keeps the prefix stable across user turns', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(textTurn('one'), textTurn('two'));
+    const signal = new AbortController().signal;
+    await rt.main.send('first', signal);
+    await rt.main.send('second', signal);
+    expectStablePrefix(provider.requests);
+  });
+
+  it('compacts against the same prefix instead of a fresh one', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(textTurn('hello'), textTurn('SUMMARY'));
+    const signal = new AbortController().signal;
+    await rt.main.send('remember this', signal);
+    await rt.main.compact(signal);
+    // The summarizing call is a fork of the same conversation; a different tool list or effort
+    // would make it re-read the whole history at full price.
+    expectStablePrefix(provider.requests);
+  });
+
+  it('reports how much of the prompt came from cache', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push([
+      {
+        type: 'done',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'hi' }] },
+        stopReason: 'end_turn',
+        usage: { inputTokens: 100, outputTokens: 10, cacheReadTokens: 900, cacheWriteTokens: 0 },
+      },
+    ]);
+    await rt.main.send('go', new AbortController().signal);
+    const report = contextBreakdown(rt);
+    expect(report.cache).toMatchObject({ read: 900, fresh: 100, ttl: '1h' });
+    expect(cacheLine(report)).toContain('90% of prompt tokens read from cache');
+    // A dead cache has to say so rather than print a quiet zero.
+    expect(cacheLine({ ...report, cache: { read: 0, written: 0, fresh: 1000, ttl: '1h' } })).toContain('nothing is being reused');
+  });
+
+  it('gives two agents of the same type the same prefix', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    const ac = new AbortController();
+    const req = { agentType: 'general-purpose', description: 'a', prompt: 'first', parent: rt.main, signal: ac.signal };
+    provider.turns.push(textTurn('one'), textTurn('two'));
+    const a = await rt.agents.spawn({ ...req }).turn;
+    fs.writeFileSync(path.join(dir(), 'moved.txt'), 'the working tree changed between the two');
+    const b = await rt.agents.spawn({ ...req, description: 'b', prompt: 'second' }).turn;
+    expect(a.state).toBe('done');
+    expect(b.state).toBe('done');
+    const [first, second] = provider.requests;
+    // The git snapshot lives in every agent's system prompt; re-reading it per spawn would cost
+    // each agent the other's cached tools and system.
+    expect(second.system).toBe(first.system);
+    expect(JSON.stringify(second.tools)).toBe(JSON.stringify(first.tools));
+  });
+
+  it('changes the roster only when the agent asked for it', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    // Past thirty MCP tools the roster defers them all, which is what ToolSearch exists to undo.
+    const many = Array.from({ length: 31 }, (_, i) => ({
+      name: i === 0 ? 'mcp__big__thing' : `mcp__big__filler${i}`,
+      description: 'deferred',
+      category: 'mcp' as const,
+      readOnly: true,
+      jsonSchema: { type: 'object', properties: {} },
+      run: async () => ok(''),
+    }));
+    rt.mcp.tools = () => many;
+    rt.syncTools();
+    provider.turns.push(toolTurn('t1', 'ToolSearch', { query: 'select:mcp__big__thing' }), textTurn('now I can call it'));
+    await rt.main.send('load it', new AbortController().signal);
+    // Surfacing a deferred tool is a deliberate act, so this invalidation is the one we accept.
+    const before = JSON.stringify(provider.requests[0].tools);
+    const after = JSON.stringify(provider.requests[1].tools);
+    expect(before).not.toContain('mcp__big__thing');
+    expect(after).toContain('mcp__big__thing');
+  });
+
+  it('holds the tool roster still while a turn is in flight', async () => {
+    const { rt, provider } = await makeRuntime([]);
+    provider.turns.push(toolTurn('t1', 'Read', { file_path: 'nope.txt' }), textTurn('ok'));
+    const extra = {
+      name: 'mcp__late__thing',
+      description: 'arrives mid-turn',
+      category: 'mcp' as const,
+      readOnly: true,
+      jsonSchema: { type: 'object', properties: {} },
+      run: async () => ok(''),
+    };
+    // A server that finishes connecting mid-turn must not rewrite the prefix under the model.
+    rt.mcp.tools = () => [extra];
+    await rt.main.send('go', new AbortController().signal);
+    expectStablePrefix(provider.requests);
+    // It joins at the next turn boundary instead.
+    rt.syncTools();
+    expect(rt.toolsFor(rt.main).some((t) => t.name === 'mcp__late__thing')).toBe(true);
   });
 });

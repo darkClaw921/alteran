@@ -20,20 +20,40 @@ export interface OpenAICompatOptions {
   anthropicCaching?: boolean;
 }
 
-function userParts(blocks: ContentBlock[]): ChatCompletionContentPart[] {
+/**
+ * Chat Completions has no document part: a PDF travels as a file part on the Anthropic-native
+ * models behind a gateway, and nowhere else. Rather than base64 that a plain gateway would read as
+ * text, an unsupported document becomes an explicit note — the model can say it could not read the
+ * attachment instead of answering from garbage.
+ */
+function userParts(blocks: ContentBlock[], anthropicCaching = false): ChatCompletionContentPart[] {
   const parts: ChatCompletionContentPart[] = [];
   for (const b of blocks) {
     if (b.type === 'text' && b.text) parts.push({ type: 'text', text: b.text });
     if (b.type === 'image') parts.push({ type: 'image_url', image_url: { url: `data:${b.mediaType};base64,${b.data}` } });
+    if (b.type === 'document') {
+      const label = b.name ? ` "${b.name}"` : '';
+      if (anthropicCaching && b.mediaType === 'application/pdf') {
+        parts.push({
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: b.data },
+        } as unknown as ChatCompletionContentPart);
+      } else {
+        parts.push({ type: 'text', text: `[a document${label} (${b.mediaType}) was attached but this endpoint cannot accept documents]` });
+      }
+    }
   }
   return parts;
 }
 
-export function toChatMessages(system: string, messages: Message[]): ChatCompletionMessageParam[] {
+export function toChatMessages(system: string, messages: Message[], anthropicCaching = false): ChatCompletionMessageParam[] {
   const out: ChatCompletionMessageParam[] = [{ role: 'system', content: system }];
   for (const m of messages) {
     if (m.role === 'assistant') {
-      const text = m.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('');
+      const text = m.content
+        .filter((b) => b.type === 'text')
+        .map((b) => (b as { text: string }).text)
+        .join('');
       const calls = m.content.filter((b) => b.type === 'tool_use');
       const reasoning = m.content
         .filter((b) => b.type === 'thinking')
@@ -58,9 +78,9 @@ export function toChatMessages(system: string, messages: Message[]): ChatComplet
       if (r.type !== 'tool_result') continue;
       out.push({ role: 'tool', tool_call_id: r.toolUseId, content: (r.isError ? 'ERROR: ' : '') + textOf(r.content) });
       const images = typeof r.content === 'string' ? [] : r.content.filter((c) => c.type === 'image');
-      if (images.length) out.push({ role: 'user', content: userParts(images) });
+      if (images.length) out.push({ role: 'user', content: userParts(images, anthropicCaching) });
     }
-    const parts = userParts(m.content);
+    const parts = userParts(m.content, anthropicCaching);
     if (parts.length) {
       const onlyText = parts.every((p) => p.type === 'text');
       out.push({ role: 'user', content: onlyText ? parts.map((p) => (p as { text: string }).text).join('\n') : parts });
@@ -97,8 +117,8 @@ export class OpenAICompatProvider implements Provider {
       type: 'function',
       function: { name: t.name, description: t.description, parameters: t.inputSchema },
     }));
-    const messages = toChatMessages(req.system, req.messages);
-    if (this.opts.anthropicCaching && /claude|anthropic/.test(req.model)) markCache(messages);
+    const messages = toChatMessages(req.system, req.messages, this.opts.anthropicCaching === true);
+    if (this.opts.anthropicCaching && /claude|anthropic/.test(req.model)) markCache(messages, req.cacheTtl);
 
     const body: ChatCompletionCreateParamsStreaming & Record<string, unknown> = {
       model: req.model,
@@ -127,11 +147,14 @@ export class OpenAICompatProvider implements Provider {
     const usage: Usage = emptyUsage();
 
     for await (const chunk of stream) {
+      // A gateway that fails mid-stream answers 200 and puts the reason in a chunk. Without this the
+      // stream just ends and the caller is told "no final message", which hides what actually broke
+      // and denies the retry logic the text it classifies on.
+      const failed = (chunk as { error?: { message?: string; code?: string | number } }).error;
+      if (failed) throw Object.assign(new Error(failed.message ?? 'The provider reported an error mid-stream'), { status: Number(failed.code) || undefined });
       if (chunk.usage) {
-        const cached = (chunk.usage as { prompt_tokens_details?: { cached_tokens?: number } }).prompt_tokens_details
-          ?.cached_tokens ?? 0;
-        const written = (chunk.usage as { prompt_tokens_details?: { cache_write_tokens?: number } }).prompt_tokens_details
-          ?.cache_write_tokens ?? 0;
+        const cached = (chunk.usage as { prompt_tokens_details?: { cached_tokens?: number } }).prompt_tokens_details?.cached_tokens ?? 0;
+        const written = (chunk.usage as { prompt_tokens_details?: { cache_write_tokens?: number } }).prompt_tokens_details?.cache_write_tokens ?? 0;
         usage.inputTokens = (chunk.usage.prompt_tokens ?? 0) - cached - written;
         usage.cacheReadTokens = cached;
         usage.cacheWriteTokens = written;
@@ -186,20 +209,30 @@ export class OpenAICompatProvider implements Provider {
   }
 }
 
-/** Anthropic-style cache breakpoints for gateways that forward them (OpenRouter, polza). */
-function markCache(messages: ChatCompletionMessageParam[]) {
+/**
+ * Anthropic-style cache breakpoints for gateways that forward them (OpenRouter, polza): one on the
+ * system message, which covers the tools and system prefix, and one on the newest message, which
+ * carries the conversation so far.
+ *
+ * The tail is usually a `tool` message — a tool loop only produces a `user` message when a reminder
+ * rides along — so looking only for `user` left the whole tool history uncached. Verified against
+ * polza: a breakpoint on a `tool` message writes the prefix and the next request reads it back.
+ */
+function markCache(messages: ChatCompletionMessageParam[], ttl?: '5m' | '1h') {
+  const cacheControl = { type: 'ephemeral', ...(ttl === '1h' ? { ttl: '1h' } : {}) };
   const mark = (m: ChatCompletionMessageParam | undefined) => {
-    if (!m || (m.role !== 'system' && m.role !== 'user')) return;
+    if (!m || (m.role !== 'system' && m.role !== 'user' && m.role !== 'tool')) return;
     if (typeof m.content === 'string') {
-      (m as { content: unknown }).content = [{ type: 'text', text: m.content, cache_control: { type: 'ephemeral' } }];
+      (m as { content: unknown }).content = [{ type: 'text', text: m.content, cache_control: cacheControl }];
     } else if (Array.isArray(m.content) && m.content.length) {
       const last = m.content[m.content.length - 1] as unknown as Record<string, unknown>;
-      last.cache_control = { type: 'ephemeral' };
+      last.cache_control = cacheControl;
     }
   };
   mark(messages[0]);
   for (let i = messages.length - 1; i > 0; i--) {
-    if (messages[i].role === 'user') {
+    const role = messages[i].role;
+    if (role === 'user' || role === 'tool') {
       mark(messages[i]);
       break;
     }

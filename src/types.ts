@@ -11,6 +11,19 @@ export interface ImageBlock {
   data: string;
 }
 
+/**
+ * A PDF or other document sent whole. Anthropic takes it as a `document` block, the OpenAI
+ * Responses API as an `input_file`; a gateway that understands neither is told so plainly rather
+ * than being handed base64 it would read as text.
+ */
+export interface DocumentBlock {
+  type: 'document';
+  mediaType: string;
+  data: string;
+  /** What to call it in the request; providers that label documents use it as the filename. */
+  name?: string;
+}
+
 export interface ThinkingBlock {
   type: 'thinking';
   text: string;
@@ -32,7 +45,7 @@ export interface ToolUseBlock {
   input: Record<string, unknown>;
 }
 
-export type ToolResultContent = string | Array<TextBlock | ImageBlock>;
+export type ToolResultContent = string | Array<TextBlock | ImageBlock | DocumentBlock>;
 
 export interface ToolResultBlock {
   type: 'tool_result';
@@ -41,13 +54,7 @@ export interface ToolResultBlock {
   isError?: boolean;
 }
 
-export type ContentBlock =
-  | TextBlock
-  | ImageBlock
-  | ThinkingBlock
-  | OpaqueBlock
-  | ToolUseBlock
-  | ToolResultBlock;
+export type ContentBlock = TextBlock | ImageBlock | DocumentBlock | ThinkingBlock | OpaqueBlock | ToolUseBlock | ToolResultBlock;
 
 export interface Message {
   role: Role;
@@ -120,11 +127,21 @@ export interface ProviderRequest {
   temperature?: number;
   /** Upstream providers to route to, best first (polza/OpenRouter gateways). */
   route?: string[];
+  /** How long cached prefixes should live; `1h` suits bursty interactive sessions. */
+  cacheTtl?: '5m' | '1h';
+  /** Stable id of this prompt prefix, so providers that route by key keep hitting the same cache. */
+  cacheKey?: string;
 }
 
 export interface Provider {
   readonly id: string;
   stream(req: ProviderRequest): AsyncIterable<StreamEvent>;
+  /**
+   * Exact prompt size, when the provider can tell us cheaply. Optional on purpose: a gateway that
+   * has no such endpoint must not be made to look like it does, and the caller falls back to the
+   * character estimate rather than trusting a number nobody produced.
+   */
+  countTokens?(req: ProviderRequest): Promise<number>;
 }
 
 export function textOf(content: ContentBlock[] | ToolResultContent): string {

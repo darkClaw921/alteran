@@ -60,6 +60,31 @@ export interface UpdateInput {
   append_notes?: string;
 }
 
+/** Fields a listing can be ordered by; every one of them is on every issue. */
+export type SortField = 'priority' | 'created' | 'updated' | 'status' | 'id' | 'title';
+
+/**
+ * Order two issues by one field. The tie-break is always priority then id, so a listing never
+ * reshuffles between two runs that read the same file — which is what makes the output diffable.
+ */
+function compareIssues(a: Issue, b: Issue, field: SortField): number {
+  const tie = () => a.priority - b.priority || a.id.localeCompare(b.id);
+  switch (field) {
+    case 'created':
+      return a.created_at.localeCompare(b.created_at) || tie();
+    case 'updated':
+      return (a.updated_at ?? a.created_at).localeCompare(b.updated_at ?? b.created_at) || tie();
+    case 'status':
+      return a.status.localeCompare(b.status) || tie();
+    case 'id':
+      return a.id.localeCompare(b.id);
+    case 'title':
+      return a.title.localeCompare(b.title) || tie();
+    default:
+      return tie();
+  }
+}
+
 export interface ListFilter {
   status?: Status[];
   type?: IssueType[];
@@ -70,6 +95,9 @@ export interface ListFilter {
   all?: boolean;
   limit?: number;
   query?: string;
+  /** Default: priority, then oldest first — the order worth working in. */
+  sort?: SortField;
+  reverse?: boolean;
 }
 
 export interface BlockInfo {
@@ -221,6 +249,48 @@ export class TrackerStore {
     this.loadedMtime = mtime;
   }
 
+  /**
+   * The tracker as a JSONL document — the same records the file holds, in the same shape, so an
+   * export is readable by `br` and can be fed straight back in.
+   */
+  exportJsonl(): string {
+    const lines = [...this.issues.values()]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map(serializeIssue);
+    return lines.join('\n') + (lines.length ? '\n' : '');
+  }
+
+  /**
+   * Merge records back in. Unknown fields survive (they are carried on the record itself), an
+   * existing id is updated rather than duplicated, and a line that will not parse is reported
+   * instead of aborting the whole import.
+   */
+  importJsonl(text: string): { added: number; updated: number; skipped: Array<{ line: number; reason: string }> } {
+    const skipped: Array<{ line: number; reason: string }> = [];
+    let added = 0;
+    let updated = 0;
+    return this.withLock(() => {
+      text.split('\n').forEach((raw, i) => {
+        if (!raw.trim()) return;
+        let issue: Issue;
+        try {
+          issue = JSON.parse(raw) as Issue;
+        } catch (e) {
+          skipped.push({ line: i + 1, reason: (e as Error).message });
+          return;
+        }
+        if (!issue?.id || !issue.title) {
+          skipped.push({ line: i + 1, reason: 'missing id or title' });
+          return;
+        }
+        if (this.issues.has(issue.id)) updated++;
+        else added++;
+        this.issues.set(issue.id, issue);
+      });
+      return { added, updated, skipped };
+    });
+  }
+
   private save() {
     const lines = [...this.issues.values()]
       .filter((i) => !i.ephemeral)
@@ -351,9 +421,7 @@ export class TrackerStore {
     for (const i of issues) resolve(i.id);
     for (const i of issues) {
       if (i.issue_type !== 'epic') continue;
-      const open = issues.filter(
-        (c) => !isClosedStatus(c.status) && c.dependencies?.some((d) => d.type === 'parent-child' && d.depends_on_id === i.id),
-      );
+      const open = issues.filter((c) => !isClosedStatus(c.status) && c.dependencies?.some((d) => d.type === 'parent-child' && d.depends_on_id === i.id));
       if (open.length) {
         const info = result.get(i.id)!;
         info.blocked = true;
@@ -368,11 +436,7 @@ export class TrackerStore {
     const now = Date.now();
     const parentId = opts.parent ? this.resolveId(opts.parent) : undefined;
     let list = this.all().filter(
-      (i) =>
-        i.status === 'open' &&
-        !info.get(i.id)?.blocked &&
-        !(i.defer_until && Date.parse(i.defer_until) > now) &&
-        !i.is_template,
+      (i) => i.status === 'open' && !info.get(i.id)?.blocked && !(i.defer_until && Date.parse(i.defer_until) > now) && !i.is_template,
     );
     if (opts.type?.length) list = list.filter((i) => opts.type!.includes(i.issue_type));
     if (opts.priority?.length) list = list.filter((i) => opts.priority!.includes(i.priority));
@@ -407,11 +471,10 @@ export class TrackerStore {
     }
     if (f.query) {
       const q = f.query.toLowerCase();
-      list = list.filter((i) =>
-        [i.id, i.title, i.description, i.notes, i.design, i.acceptance_criteria].some((s) => s?.toLowerCase().includes(q)),
-      );
+      list = list.filter((i) => [i.id, i.title, i.description, i.notes, i.design, i.acceptance_criteria].some((s) => s?.toLowerCase().includes(q)));
     }
-    list.sort((a, b) => a.priority - b.priority || a.created_at.localeCompare(b.created_at));
+    list.sort((a, b) => compareIssues(a, b, f.sort ?? 'priority'));
+    if (f.reverse) list.reverse();
     return f.limit ? list.slice(0, f.limit) : list;
   }
 
@@ -570,7 +633,8 @@ export class TrackerStore {
         const open = [...this.issues.values()].filter(
           (c) => !isClosedStatus(c.status) && c.dependencies?.some((d) => d.type === 'parent-child' && d.depends_on_id === issue.id),
         );
-        if (open.length) throw new TrackerError(`Epic ${issue.id} still has ${open.length} open children (${open.map((c) => c.id).join(', ')}). Use --force to close anyway.`);
+        if (open.length)
+          throw new TrackerError(`Epic ${issue.id} still has ${open.length} open children (${open.map((c) => c.id).join(', ')}). Use --force to close anyway.`);
       }
       const now = nowIso();
       issue.status = 'closed';

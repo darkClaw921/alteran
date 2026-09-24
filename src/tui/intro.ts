@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { loadSettings } from '../config/settings.js';
+import { wantsIntro } from './motion.js';
 import { applyTheme, C, type ThemeName } from './theme.js';
 
 export type IntroPhase = 'approach' | 'kawoosh' | 'enter' | 'tunnel' | 'exit';
@@ -437,7 +438,8 @@ export interface IntroHandle {
 export function startIntro(cwd: string, out: NodeJS.WriteStream = process.stdout): IntroHandle | undefined {
   if (!out.isTTY || process.env.ALTERAN_NO_INTRO === '1') return undefined;
   const { settings } = loadSettings(cwd);
-  if (settings.intro === false) return undefined;
+  // The animation is decoration, so reduced motion drops it entirely.
+  if (!wantsIntro(settings)) return undefined;
   const theme = (process.env.ALTERAN_THEME as ThemeName | undefined) ?? (settings.theme as ThemeName | undefined);
   applyTheme(theme);
   let release!: (until: Promise<unknown>) => void;

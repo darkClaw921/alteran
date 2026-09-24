@@ -19,10 +19,7 @@ export interface PermissionRequest {
   agentLabel: string;
 }
 
-export type PermissionAnswer =
-  | { kind: 'allow_once' }
-  | { kind: 'allow_always'; rule: string }
-  | { kind: 'deny'; feedback?: string };
+export type PermissionAnswer = { kind: 'allow_once' } | { kind: 'allow_always'; rule: string } | { kind: 'deny'; feedback?: string };
 
 export interface RuleSources {
   allow: string[];

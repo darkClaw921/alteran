@@ -1,0 +1,30 @@
+name: sandbox
+
+# Краевые случаи агента (test/sandbox/) запускают настоящие команды и доказывают, что
+# запрещённая или неодобренная команда НЕ выполняется. Поэтому они идут только в одноразовом
+# контейнере и никогда не блокируют быстрый PR-пайплайн: отдельный триггер по расписанию,
+# вручную, либо на push в основную ветку — уже после того, как ci.yml прошёл.
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+  push:
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      # test:sandbox собирает образ (в нём закреплён тот же pnpm, что и в репозитории) и
+      # запускает набор с --network none: тесты не должны ходить в сеть.
+      - name: Собрать образ и прогнать краевые случаи
+        run: pnpm test:sandbox

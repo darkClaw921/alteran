@@ -58,6 +58,7 @@ function htmlToText(html: string): string {
 export const WebFetchTool: Tool<{ url: string; prompt?: string }> = {
   name: 'WebFetch',
   category: 'network',
+  timeoutMs: 60_000,
   description: `Fetches a URL, converts HTML to text and (if prompt is given) answers the prompt about the page with a fast model.
 HTTP is upgraded to HTTPS. Use for docs and public pages; not for authenticated URLs.`,
   schema: z.object({
@@ -97,7 +98,10 @@ const askSchema = z.object({
       z.object({
         question: z.string(),
         header: z.string().optional(),
-        options: z.array(z.object({ label: z.string(), description: z.string().optional() })).min(2).max(4),
+        options: z
+          .array(z.object({ label: z.string(), description: z.string().optional() }))
+          .min(2)
+          .max(4),
         multiSelect: z.boolean().optional(),
       }),
     )
@@ -149,7 +153,7 @@ who can approve it (optionally decomposing it into phased tracker tasks) or send
     }
     rt.setMode(decision.mode ?? rt.modeBeforePlan ?? 'default');
     if (decision.kind === 'tasks') {
-      const report = await rt.runSubagent({
+      const { report } = await rt.runSubagent({
         agentType: 'create-tasks',
         description: 'Decompose plan into tracker tasks',
         prompt: `The user approved this implementation plan (saved at ${file}). Decompose it into phases (epics) and tasks in the tracker.\n\n${input.plan}`,

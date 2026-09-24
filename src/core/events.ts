@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import type { Message, Usage } from '../types.js';
 import type { ToolOutput } from '../tools/types.js';
 import type { PermissionMode } from '../config/settings.js';
+import type { ScheduleView } from './schedule.js';
 
 export interface TodoItem {
   content: string;
@@ -10,8 +11,21 @@ export interface TodoItem {
 }
 
 export type AgentEvent =
-  | { type: 'agent_start'; agentId: string; label: string; parentId?: string; prompt?: string }
-  | { type: 'agent_end'; agentId: string; label: string; ok: boolean; summary?: string }
+  | {
+      type: 'agent_start';
+      agentId: string;
+      label: string;
+      /** Address for SendMessage/TaskStop; absent only for agents started outside the registry. */
+      name?: string;
+      parentId?: string;
+      prompt?: string;
+      depth?: number;
+      model?: string;
+      background?: boolean;
+      /** A continued agent, not a fresh one — the UI updates its row instead of adding another. */
+      resumed?: boolean;
+    }
+  | { type: 'agent_end'; agentId: string; label: string; name?: string; ok: boolean; summary?: string; usage?: Usage }
   | { type: 'user_message'; agentId: string; text: string }
   | { type: 'text_delta'; agentId: string; text: string }
   | { type: 'thinking_delta'; agentId: string; text: string }
@@ -35,7 +49,8 @@ export type AgentEvent =
   | { type: 'mode'; mode: PermissionMode }
   | { type: 'model'; model: string }
   | { type: 'compact'; agentId: string; beforeTokens: number; afterTokens: number }
-  | { type: 'plan_ready'; plan: string };
+  | { type: 'plan_ready'; plan: string }
+  | { type: 'schedule'; items: ScheduleView[] };
 
 export class EventBus {
   private ee = new EventEmitter();

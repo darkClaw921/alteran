@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import type { AgentDef } from '../compat/types.js';
 import type { PermissionMode } from '../config/settings.js';
 import type { ModelRef } from '../providers/registry.js';
@@ -10,10 +11,13 @@ import {
   type ContentBlock,
   type Message,
   type StopReason,
+  type ImageBlock,
   type ToolResultBlock,
   type ToolUseBlock,
   type Usage,
 } from '../types.js';
+import { notification } from './agents.js';
+import { describeImages, drainImages, imageRefs } from './attachments.js';
 import type { TodoItem } from './events.js';
 import type { Runtime } from './runtime.js';
 import { isReadOnly, type Tool, type ToolOutput } from '../tools/types.js';
@@ -40,7 +44,69 @@ export interface AgentOptions {
 }
 
 const MAX_TURNS = 400;
+
+/** Retries per model call, on top of the first attempt. */
+const MODEL_RETRIES = 3;
+
+/** Read-only calls run in parallel, but never more than this many at a time. */
+const MAX_PARALLEL_TOOLS = 8;
+
+/** What an elided tool result leaves behind: enough to know it existed, small enough to be free. */
+const ELIDED_PLACEHOLDER = '[tool result elided to free context; re-run the tool if you need it again]';
+/** Share of the context window that must be recoverable before history is rewritten; see `microcompact`. */
+const MICROCOMPACT_MIN_SHARE = 0.02;
+
+/** Raised when a tool outlives its own `timeoutMs`; the runner turns it into a tool error. */
+class ToolTimeout extends Error {
+  constructor(name: string, ms: number) {
+    super(`Tool ${name} timed out after ${ms}ms`);
+  }
+}
+
+/**
+ * Errors worth another attempt: anything that never reached the model (connection reset, timeout),
+ * anything the gateway throttled or fumbled (429, 5xx), and the 400 a gateway answers with when the
+ * model emitted a tool call it could not parse. That last one is a dice roll in the model's output,
+ * not a defect in the request, and re-rolling it is exactly what a person would do by hand.
+ */
+const TRANSIENT =
+  /timed?\s*out|timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|socket hang up|fetch failed|network|stream ended without|overload|unavailable|rate.?limit|internal (server )?error|try again|временно|внутренн[а-яё]* ошибк/i;
+/** Gateways report a mangled tool call with a 400; some of them only in their own language. */
+const BAD_TOOL_CALL = /tool[_ ]?call|tool[_ ]?use|invalid json|malformed|вызов инструмента|некорректн/i;
+
+function transient(e: unknown): boolean {
+  const err = e as { status?: number; message?: string };
+  const status = typeof err?.status === 'number' ? err.status : undefined;
+  const msg = err?.message ?? String(e);
+  if (status === undefined) return TRANSIENT.test(msg);
+  if (status === 408 || status === 409 || status === 429 || status >= 500) return true;
+  if (status === 400) return BAD_TOOL_CALL.test(msg) || TRANSIENT.test(msg);
+  // A gateway that reports its own breakage under some other status is still worth another try.
+  return TRANSIENT.test(msg);
+}
+
+/** Exponential with jitter, so several agents retrying at once do not march in step. */
+function backoffMs(attempt: number, e: unknown): number {
+  const after = Number((e as { headers?: Record<string, string> })?.headers?.['retry-after']);
+  if (Number.isFinite(after) && after > 0) return Math.min(after * 1000, 30_000);
+  return Math.round(Math.min(1000 * 2 ** attempt, 15_000) * (0.75 + Math.random() * 0.5));
+}
+
+function wait(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new InterruptedError());
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
 let agentSeq = 0;
+let directSeq = 0;
 
 export class InterruptedError extends Error {
   constructor() {
@@ -63,6 +129,10 @@ export class Agent implements AgentHandle {
   contextTokens = 0;
   /** Extra context delivered with the next user message (hook output, mode changes, phase reports). */
   pendingContext: string[] = [];
+  /** True while a turn is in flight, so the runtime knows whether it must wake this agent. */
+  busy = false;
+  /** Set when a hook asked for the session to stop (`continue: false`): no further turns run. */
+  private halted = false;
   private modeOverride?: PermissionMode;
   onMessage?: (m: Message) => void;
 
@@ -99,6 +169,31 @@ export class Agent implements AgentHandle {
   /** Run one user turn to completion (model ↔ tools loop). Returns the final assistant text. */
   async send(input: string | ContentBlock[], signal: AbortSignal): Promise<string> {
     const rt = this.runtime;
+    if (this.halted) {
+      rt.bus.emit({ type: 'notice', level: 'warn', text: 'The session was stopped by a hook. Run /clear to start a new one.' });
+      return '';
+    }
+    // A turn boundary is the one safe moment to let newly connected servers into the tool roster.
+    rt.syncTools();
+    // Images ride in front of the message that carries them: queued attachments first (/attach,
+    // /paste), then any image named with `@path` in the text itself. Subagents get neither — their
+    // prompt comes from another agent, not from the person who has pictures to show.
+    const images: ImageBlock[] = [];
+    if (this.isMain) {
+      const queued = drainImages(rt.pendingImages.splice(0));
+      for (const e of queued.errors) rt.bus.emit({ type: 'notice', level: 'warn', text: e });
+      images.push(...queued.blocks);
+      if (typeof input === 'string') {
+        const refs = imageRefs(input, rt.cwd);
+        for (const img of refs.images) {
+          if ('error' in img) rt.bus.emit({ type: 'notice', level: 'warn', text: img.error });
+          else images.push(img.block);
+        }
+        input = refs.text;
+      }
+      const note = describeImages(images);
+      if (note) rt.bus.emit({ type: 'notice', level: 'info', text: note });
+    }
     const text = typeof input === 'string' ? input : textOf(input);
     const extra = [...this.pendingContext];
     this.pendingContext = [];
@@ -108,29 +203,63 @@ export class Agent implements AgentHandle {
         rt.bus.emit({ type: 'notice', level: 'warn', text: `Prompt blocked by hook: ${hook.reason ?? ''}` });
         return '';
       }
+      // `continue: false` is a stronger answer than "block this prompt": the session itself stops.
+      if (hook.stop) {
+        this.halted = true;
+        rt.bus.emit({ type: 'notice', level: 'warn', text: `Session stopped by hook: ${hook.reason ?? ''}` });
+        return '';
+      }
       extra.push(...hook.context);
       for (const m of hook.messages) rt.bus.emit({ type: 'notice', level: 'info', text: m });
     }
-    const content: ContentBlock[] = [...this.reminder(extra), ...(typeof input === 'string' ? [{ type: 'text' as const, text: input }] : input)];
+    const content: ContentBlock[] = [...this.reminder(extra), ...images, ...(typeof input === 'string' ? [{ type: 'text' as const, text: input }] : input)];
     this.push({ role: 'user', content });
     rt.bus.emit({ type: 'user_message', agentId: this.id, text });
     return this.loop(signal);
   }
 
   private async loop(signal: AbortSignal): Promise<string> {
+    this.busy = true;
+    try {
+      return await this.turns(signal);
+    } finally {
+      this.busy = false;
+      // A background child can finish between the last drain and this line, when `busy` still says
+      // "mid-turn" and nothing will look again. Ask once more now that the turn is truly over.
+      this.runtime.wake(this.id);
+    }
+  }
+
+  private async turns(signal: AbortSignal): Promise<string> {
     const rt = this.runtime;
     let finalText = '';
     let compactedForOverflow = false;
     for (let turn = 0; turn < MAX_TURNS; turn++) {
       if (signal.aborted) throw new InterruptedError();
+      // Spend is checked before the model is called, so a limit stops the next request rather than
+      // only complaining after the bill for it has already been run up.
+      const budget = rt.budgetCheck();
+      if (budget.state === 'stop') {
+        rt.bus.emit({
+          type: 'notice',
+          level: 'warn',
+          text: `Session budget reached (${budgetText(budget)}). Stopping — raise the limit in settings or /clear to carry on.`,
+        });
+        rt.bus.emit({ type: 'status', agentId: this.id, state: 'idle' });
+        return `${finalText}\n[stopped: session budget reached (${budgetText(budget)})]`;
+      }
+      if (budget.state === 'warn') rt.bus.emit({ type: 'notice', level: 'warn', text: `Session budget reached (${budgetText(budget)}); continuing.` });
       const info = rt.registry.info(this.model);
       if (this.contextTokens > info.contextWindow * rt.compactThreshold) await this.compact(signal);
+      // Below the full-compaction threshold, shed the oldest tool results for free: they are the
+      // bulkiest part of a tool-heavy history and the part nobody reads twice.
+      else if (this.contextTokens > info.contextWindow * rt.microcompact.threshold) this.microcompact();
 
       const tools = rt.toolsFor(this);
       rt.bus.emit({ type: 'status', agentId: this.id, state: 'thinking' });
       let result: { message: Message; stopReason: StopReason; usage: Usage };
       try {
-        result = await this.callModel(tools, signal);
+        result = await this.callWithRetry(tools, signal);
       } catch (e) {
         if (signal.aborted) throw new InterruptedError();
         const msg = (e as Error).message ?? String(e);
@@ -169,11 +298,24 @@ export class Agent implements AgentHandle {
         }
         if (stopReason === 'refusal') rt.bus.emit({ type: 'notice', level: 'warn', text: 'The model declined this request.' });
         const stop = await rt.hooks.run(this.isMain ? 'Stop' : 'SubagentStop', { stop_hook_active: turn > 0 });
+        if (stop.stop) {
+          this.halted = true;
+          rt.bus.emit({ type: 'notice', level: 'warn', text: `Session stopped by hook: ${stop.reason ?? ''}` });
+          return finalText;
+        }
         if (stop.block && stop.reason) {
           this.push({ role: 'user', content: this.reminder([`Stop hook feedback:\n${stop.reason}`]) });
           continue;
         }
+        // A background agent that finished while this turn ran must be reported before the turn ends,
+        // or its work would sit unread until the user happened to type again.
+        const late = this.drain();
+        if (late.length) {
+          this.push({ role: 'user', content: this.reminder(late) });
+          continue;
+        }
         rt.bus.emit({ type: 'status', agentId: this.id, state: 'idle' });
+        if (this.isMain) rt.notify('idle', 'Waiting for your input');
         return finalText;
       }
 
@@ -183,6 +325,12 @@ export class Agent implements AgentHandle {
         reminders.push(this.modeNotice);
         this.modeNotice = undefined;
       }
+      // Messages sent to this agent mid-run, and reports from its own background children.
+      if (this.pendingContext.length) {
+        reminders.push(...this.pendingContext);
+        this.pendingContext = [];
+      }
+      reminders.push(...this.drain());
       this.push({ role: 'user', content: [...results, ...this.reminder(reminders)] });
       if (signal.aborted) throw new InterruptedError();
     }
@@ -190,6 +338,56 @@ export class Agent implements AgentHandle {
   }
 
   modeNotice?: string;
+
+  /** Notifications for background children that finished since the last check. */
+  private drain(): string[] {
+    const done = this.runtime.agents.drain(this.id);
+    return done.length ? [notification(done)] : [];
+  }
+
+  /**
+   * Identity of the cacheable prefix (tools + system). Providers that route by key — OpenAI's
+   * `prompt_cache_key` — use it to keep requests with the same prefix on the same cache, and it is
+   * stable across sessions, so a resumed conversation lands where the first one left off.
+   */
+  private prefixKey(tools: Tool<any>[]): string {
+    const names = tools.map((t) => t.name).join(',');
+    if (this.keyFor !== names || this.keySystem !== this.system) {
+      this.keyFor = names;
+      this.keySystem = this.system;
+      this.key = 'alteran-' + crypto.createHash('sha1').update(`${this.system}\n${names}`).digest('hex').slice(0, 16);
+    }
+    return this.key;
+  }
+  private key = '';
+  private keyFor = '';
+  private keySystem = '';
+
+  /**
+   * A model call that survives the gateway having a bad minute. Until this existed, one timeout or
+   * one mangled tool call ended the whole turn and the user had to retype the task; everything the
+   * model had already done that turn stayed, but the thread stopped dead.
+   */
+  private async callWithRetry(tools: Tool<any>[], signal: AbortSignal) {
+    const rt = this.runtime;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.callModel(tools, signal);
+      } catch (e) {
+        if (signal.aborted) throw new InterruptedError();
+        if (attempt >= MODEL_RETRIES || !transient(e)) throw e;
+        const delay = backoffMs(attempt, e);
+        const msg = (e as Error).message ?? String(e);
+        rt.bus.emit({
+          type: 'notice',
+          level: 'warn',
+          text: `${this.label}: ${msg} — retrying in ${Math.max(1, Math.round(delay / 1000))}s (attempt ${attempt + 2} of ${MODEL_RETRIES + 1}).`,
+        });
+        rt.bus.emit({ type: 'status', agentId: this.id, state: 'thinking', detail: `retry ${attempt + 1}/${MODEL_RETRIES}` });
+        await wait(delay, signal);
+      }
+    }
+  }
 
   private async callModel(tools: Tool<any>[], signal: AbortSignal) {
     const rt = this.runtime;
@@ -204,6 +402,8 @@ export class Agent implements AgentHandle {
       maxTokens: Math.min(rt.settings.maxOutputTokens ?? 64_000, info.maxOutput),
       signal,
       reasoning: rt.reasoning,
+      cacheTtl: rt.cacheTtl,
+      cacheKey: this.prefixKey(tools),
     });
     for await (const ev of stream) {
       if (ev.type === 'text_delta') rt.bus.emit({ type: 'text_delta', agentId: this.id, text: ev.text });
@@ -233,8 +433,15 @@ export class Agent implements AgentHandle {
           j++;
         }
         const batch = uses.slice(i, j);
-        const outs = await Promise.all(batch.map((u) => this.runTool(u, signal)));
-        outs.forEach((o, k) => (results[i + k] = o));
+        // Read-only calls run together, but not all at once: an unbounded fan-out of twenty greps
+        // would starve the machine and make one slow call hold up every result behind it.
+        for (let k = 0; k < batch.length; k += MAX_PARALLEL_TOOLS) {
+          const chunk = batch.slice(k, k + MAX_PARALLEL_TOOLS);
+          const outs = await Promise.all(chunk.map((u) => this.runTool(u, signal)));
+          outs.forEach((o, n) => {
+            results[i + k + n] = o;
+          });
+        }
         i = j;
       } else {
         results[i] = await this.runTool(uses[i], signal);
@@ -244,7 +451,17 @@ export class Agent implements AgentHandle {
     return results;
   }
 
-  private async runTool(use: ToolUseBlock, signal: AbortSignal): Promise<ToolResultBlock> {
+  /**
+   * Run a tool outside the model loop (scheduled work), through the same hooks, permission checks
+   * and console events, so deferred work is never a way around the rules.
+   */
+  async runDirect(name: string, input: Record<string, unknown>, signal: AbortSignal): Promise<ToolOutput> {
+    const use: ToolUseBlock = { type: 'tool_use', id: `direct-${++directSeq}`, name, input };
+    const result = await this.runTool(use, signal, true);
+    return { content: result.content, isError: result.isError };
+  }
+
+  private async runTool(use: ToolUseBlock, signal: AbortSignal, direct = false): Promise<ToolResultBlock> {
     const rt = this.runtime;
     const started = Date.now();
     const tool = rt.findTool(use.name, this);
@@ -271,8 +488,14 @@ export class Agent implements AgentHandle {
     const pre = await rt.hooks.run('PreToolUse', { tool_name: tool.name, tool_input: input }, tool.name);
     for (const m of pre.messages) rt.bus.emit({ type: 'notice', level: 'info', text: m });
     if (pre.updatedInput) input = pre.updatedInput;
+    for (const rule of pre.updatedPermissions ?? []) rt.permissions.addAllow(rule);
     if (pre.block || pre.permission === 'deny') {
       return finish({ content: `Blocked by PreToolUse hook: ${pre.reason ?? 'denied'}`, isError: true }, input);
+    }
+    if (pre.stop) {
+      this.halted = true;
+      rt.bus.emit({ type: 'notice', level: 'warn', text: `Session stopped by hook: ${pre.reason ?? ''}` });
+      return finish({ content: 'Session stopped by PreToolUse hook.', isError: true }, input);
     }
 
     if (pre.permission !== 'allow') {
@@ -290,6 +513,8 @@ export class Agent implements AgentHandle {
           );
         }
         rt.bus.emit({ type: 'status', agentId: this.id, state: 'tool', detail: `awaiting approval: ${tool.name}` });
+        // The moment a call blocks on a person is the moment worth telling the desktop about.
+        rt.notify('permission_request', `${this.label} needs approval to run ${tool.name}`);
         const answer = await rt.ui.askPermission(
           { tool: tool.name, input, summary, reason: decision.reason, suggestion: decision.suggestion, agentLabel: this.label },
           signal,
@@ -305,15 +530,78 @@ export class Agent implements AgentHandle {
     rt.bus.emit({ type: 'status', agentId: this.id, state: 'tool', detail: tool.name });
     let out: ToolOutput;
     try {
-      out = await tool.run(input, { runtime: rt, agent: this, signal, toolUseId: use.id });
+      out = await this.execTool(tool, input, signal, use.id, direct);
     } catch (e) {
-      if (signal.aborted) out = { content: 'Interrupted by user', isError: true };
+      if (e instanceof ToolTimeout) out = { content: e.message, isError: true };
+      else if (signal.aborted) out = { content: 'Interrupted by user', isError: true };
       else out = { content: `Tool ${tool.name} failed: ${(e as Error).message ?? e}`, isError: true };
     }
     const post = await rt.hooks.run('PostToolUse', { tool_name: tool.name, tool_input: input, tool_response: textOf(out.content).slice(0, 20_000) }, tool.name);
     if (post.block && post.reason) out = appendText(out, `\n\nPostToolUse hook: ${post.reason}`);
     if (post.context.length) out = appendText(out, `\n\n<system-reminder>\n${post.context.join('\n')}\n</system-reminder>`);
+    if (post.stop) {
+      this.halted = true;
+      rt.bus.emit({ type: 'notice', level: 'warn', text: `Session stopped by hook: ${post.reason ?? ''}` });
+    }
     return finish(out, input);
+  }
+
+  /**
+   * Replace the content of old tool results with a one-line note, keeping the newest `keepRecent`
+   * intact. The full compaction asks the model to re-read the whole history to summarize it; this
+   * costs nothing and frees the cheapest tokens in the window — results already acted upon.
+   * Blocks keep their id, so a `tool_use` never loses its answer.
+   */
+  microcompact(): number {
+    const { enabled, keepRecent } = this.runtime.microcompact;
+    if (!enabled) return 0;
+    const results: ToolResultBlock[] = [];
+    for (const m of this.messages) for (const b of m.content) if (b.type === 'tool_result') results.push(b);
+    const stale: Array<{ block: ToolResultBlock; saves: number }> = [];
+    let saved = 0;
+    for (const block of results.slice(0, Math.max(0, results.length - keepRecent))) {
+      const text = typeof block.content === 'string' ? block.content : textOf(block.content);
+      if (text.length <= ELIDED_PLACEHOLDER.length) continue;
+      const saves = text.length - ELIDED_PLACEHOLDER.length;
+      stale.push({ block, saves });
+      saved += saves;
+    }
+    // Rewriting history costs the prompt cache: every byte after the change has to be sent and paid
+    // for again. Trimming one small result each turn would keep the prefix moving and never let a
+    // cache entry be read, so wait until the saving is worth the miss — a share of the window, not a
+    // fixed size, since what counts as worth it depends on the model — and then take it in one go.
+    const floor = this.runtime.registry.info(this.model).contextWindow * MICROCOMPACT_MIN_SHARE;
+    if (Math.ceil(saved / 3.5) < floor) return 0;
+    for (const { block } of stale) block.content = ELIDED_PLACEHOLDER;
+    this.contextTokens = Math.max(0, this.contextTokens - Math.ceil(saved / 3.5));
+    return saved;
+  }
+
+  /**
+   * Run one tool under its own deadline. The tool gets a child signal that follows the turn's, so a
+   * timeout stops a well-behaved tool (a fetch, a subprocess) without cancelling the turn or the
+   * other calls sharing its batch.
+   */
+  private async execTool(tool: Tool<any>, input: Record<string, unknown>, signal: AbortSignal, toolUseId: string, direct = false): Promise<ToolOutput> {
+    const limit = tool.timeoutMs;
+    if (!limit) return tool.run(input, { runtime: this.runtime, agent: this, signal, toolUseId, direct });
+    const child = new AbortController();
+    const onAbort = () => child.abort();
+    if (signal.aborted) child.abort();
+    else signal.addEventListener('abort', onAbort, { once: true });
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await new Promise<ToolOutput>((resolve, reject) => {
+        timer = setTimeout(() => {
+          child.abort();
+          reject(new ToolTimeout(tool.name, limit));
+        }, limit);
+        tool.run(input, { runtime: this.runtime, agent: this, signal: child.signal, toolUseId, direct }).then(resolve, reject);
+      });
+    } finally {
+      if (timer) clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+    }
   }
 
   /** Replace history with a model-written summary so work can continue in a fresh context. */
@@ -330,7 +618,20 @@ export class Agent implements AgentHandle {
     else history.push({ role: 'user', content: [{ type: 'text', text: prompt }] });
     const provider = rt.registry.get(this.model.provider);
     let summary = '';
-    for await (const ev of provider.stream({ model: this.model.model, system: this.system, messages: history, tools: [], maxTokens: 16_000, signal, reasoning: 'off' })) {
+    // Summarizing is a fork of this same conversation: it must send the very same tools, system and
+    // effort, or the whole history is re-read at full price instead of from the cache.
+    for await (const ev of provider.stream({
+      model: this.model.model,
+      route: rt.registry.route(this.model),
+      system: this.system,
+      messages: history,
+      tools: rt.toolsFor(this).map(toolSpec),
+      maxTokens: 16_000,
+      signal,
+      reasoning: rt.reasoning,
+      cacheTtl: rt.cacheTtl,
+      cacheKey: this.prefixKey(rt.toolsFor(this)),
+    })) {
       if (ev.type === 'done') summary = textOf(ev.message.content);
     }
     if (!summary.trim()) return;
@@ -360,6 +661,11 @@ Include:
 5. Tracker state: phases/tasks worked on, which are closed, in progress, remaining (with ids).
 6. Pending work and the exact next step.
 Respond with the summary only, no tool calls.`;
+
+function budgetText(b: { used: number; limit: number; unit: 'tokens' | 'cost' }): string {
+  const fmt = (n: number) => (b.unit === 'cost' ? n.toFixed(4) : Math.round(n).toLocaleString('en-US'));
+  return `${fmt(b.used)} of ${fmt(b.limit)} ${b.unit}`;
+}
 
 function interruptedResult(u: ToolUseBlock): ToolResultBlock {
   return { type: 'tool_result', toolUseId: u.id, content: 'Interrupted by user', isError: true };

@@ -180,7 +180,13 @@ export function markdown(text: string, width: number, base: Color = C.text): Lin
     }
     if (/^\s*\|.*\|\s*$/.test(raw)) {
       if (/^\s*\|[\s:|-]+\|\s*$/.test(raw)) continue;
-      tableRows.push(raw.trim().slice(1, -1).split('|').map((c) => c.trim()));
+      tableRows.push(
+        raw
+          .trim()
+          .slice(1, -1)
+          .split('|')
+          .map((c) => c.trim()),
+      );
       continue;
     }
     flushTable();
@@ -229,7 +235,6 @@ export function fmtClock(ms: number): string {
   const ss = String(s % 60).padStart(2, '0');
   return `${hh}:${mm}:${ss}`;
 }
-
 
 /**
  * Net wheel movement in an SGR mouse report (ESC [ < button ; col ; row M/m).

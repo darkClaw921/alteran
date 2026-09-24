@@ -1,10 +1,18 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { Command } from 'commander';
 import { epicLine, issueDetails, issueLine } from './format.js';
 import { paint, section, setColorEnabled } from '../util/color.js';
 import { TrackerError, TrackerStore } from './store.js';
 import { projectRoot } from '../config/paths.js';
 
-const csv = (v: string, prev: string[] = []) => [...prev, ...v.split(',').map((s) => s.trim()).filter(Boolean)];
+const csv = (v: string, prev: string[] = []) => [
+  ...prev,
+  ...v
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+];
 const collect = (v: string, prev: string[] = []) => [...prev, v];
 
 interface Globals {
@@ -125,9 +133,7 @@ export function buildTasksCommand(name = 'tasks'): Command {
     .argument('<title...>')
     .option('-t, --type <type>', '', 'task')
     .option('-p, --priority <p>', '', '2')
-    .action((title: string[], o) =>
-      run(() => console.log(openStore(g()).create({ title: title.join(' '), type: o.type, priority: o.priority }).id)),
-    );
+    .action((title: string[], o) => run(() => console.log(openStore(g()).create({ title: title.join(' '), type: o.type, priority: o.priority }).id)));
 
   cmd
     .command('list')
@@ -140,6 +146,8 @@ export function buildTasksCommand(name = 'tasks'): Command {
     .option('-l, --label <label>', '', collect)
     .option('-a, --assignee <who>')
     .option('--all', 'Include closed issues')
+    .option('--sort <field>', 'priority|created|updated|status|id|title', 'priority')
+    .option('--reverse', 'Reverse the sort order')
     .option('--limit <n>')
     .action((o) =>
       run(() => {
@@ -152,9 +160,49 @@ export function buildTasksCommand(name = 'tasks'): Command {
           label: o.label,
           assignee: o.assignee,
           all: o.all,
+          sort: o.sort,
+          reverse: o.reverse,
           limit: o.limit ? Number(o.limit) : undefined,
         });
         out(g(), list, () => (list.length ? list.map((i) => issueLine(i, true)).join('\n') : 'No issues'));
+      }),
+    );
+
+  cmd
+    .command('export')
+    .description('Write the tracker as JSONL (readable by br, and by `alteran tasks import`)')
+    .option('-o, --out <file>', 'Write to a file instead of stdout')
+    .action((o) =>
+      run(() => {
+        const store = openStore(g());
+        const text = store.exportJsonl();
+        const count = store.all(true).length;
+        if (o.out) {
+          fs.writeFileSync(path.resolve(o.out), text);
+          out(g(), { file: path.resolve(o.out), issues: count }, () => `${paint.green('Exported')} ${count} issues to ${o.out}`);
+          return;
+        }
+        // Unadorned on stdout, so `alteran tasks export > backup.jsonl` round-trips exactly.
+        process.stdout.write(text);
+      }),
+    );
+
+  cmd
+    .command('import')
+    .description('Merge issues from a JSONL file or stdin into the tracker')
+    .argument('[file]', 'File to read; stdin when omitted')
+    .action((file?: string) =>
+      run(() => {
+        const store = openStore(g());
+        const text = file ? fs.readFileSync(path.resolve(file), 'utf8') : fs.readFileSync(0, 'utf8');
+        const result = store.importJsonl(text);
+        out(
+          g(),
+          result,
+          () =>
+            `${paint.green('Imported')} ${result.added} new, ${result.updated} updated` +
+            (result.skipped.length ? `\n${paint.amber('Skipped')} ${result.skipped.length} line(s): ${result.skipped.map((s) => `line ${s.line} (${s.reason})`).join(', ')}` : ''),
+        );
       }),
     );
 
@@ -186,8 +234,13 @@ export function buildTasksCommand(name = 'tasks'): Command {
     .action(() =>
       run(() => {
         const list = openStore(g()).blocked();
-        out(g(), list.map((b) => ({ ...b.issue, blocked_by: b.blockers })), () =>
-          list.length ? list.map((b) => `${issueLine(b.issue, true)}\n    ${paint.red('blocked by:')} ${paint.muted(b.blockers.join(', '))}`).join('\n') : 'No blocked issues',
+        out(
+          g(),
+          list.map((b) => ({ ...b.issue, blocked_by: b.blockers })),
+          () =>
+            list.length
+              ? list.map((b) => `${issueLine(b.issue, true)}\n    ${paint.red('blocked by:')} ${paint.muted(b.blockers.join(', '))}`).join('\n')
+              : 'No blocked issues',
         );
       }),
     );
@@ -242,7 +295,9 @@ export function buildTasksCommand(name = 'tasks'): Command {
             remove_labels: o.removeLabel,
           }),
         );
-        out(g(), updated.length === 1 ? updated[0] : updated, () => updated.map((i) => `${paint.cyan('Updated')} ${i.id} ${paint.muted(`(${i.status})`)}`).join('\n'));
+        out(g(), updated.length === 1 ? updated[0] : updated, () =>
+          updated.map((i) => `${paint.cyan('Updated')} ${i.id} ${paint.muted(`(${i.status})`)}`).join('\n'),
+        );
       }),
     );
 
@@ -365,7 +420,10 @@ export function buildTasksCommand(name = 'tasks'): Command {
     .action(() =>
       run(() => {
         const store = openStore(g());
-        const closed = store.epics().filter((e) => e.eligibleForClose).map((e) => store.close(e.epic.id, 'All children closed'));
+        const closed = store
+          .epics()
+          .filter((e) => e.eligibleForClose)
+          .map((e) => store.close(e.epic.id, 'All children closed'));
         out(g(), closed, () => (closed.length ? closed.map((i) => `Closed ${i.id}`).join('\n') : 'Nothing to close'));
       }),
     );
@@ -451,9 +509,15 @@ export function buildTasksCommand(name = 'tasks'): Command {
             [
               section('CONSILIUM'),
               `${paint.muted('Total:')} ${paint.bold(String(s.total))}   ${paint.muted('Ready:')} ${paint.green(String(s.ready))}   ${paint.muted('Blocked:')} ${paint.red(String(s.blocked))}`,
-              `${paint.muted('Status:')} ${Object.entries(s.byStatus).map(([k, v]) => `${paint.cyan(k)}=${v}`).join('  ')}`,
-              `${paint.muted('Type:')} ${Object.entries(s.byType).map(([k, v]) => `${paint.cyan(k)}=${v}`).join('  ')}`,
-              `${paint.muted('Priority:')} ${Object.entries(s.byPriority).map(([k, v]) => `${paint.cyan(k)}=${v}`).join('  ')}`,
+              `${paint.muted('Status:')} ${Object.entries(s.byStatus)
+                .map(([k, v]) => `${paint.cyan(k)}=${v}`)
+                .join('  ')}`,
+              `${paint.muted('Type:')} ${Object.entries(s.byType)
+                .map(([k, v]) => `${paint.cyan(k)}=${v}`)
+                .join('  ')}`,
+              `${paint.muted('Priority:')} ${Object.entries(s.byPriority)
+                .map(([k, v]) => `${paint.cyan(k)}=${v}`)
+                .join('  ')}`,
             ].join('\n'),
           );
         }),
@@ -472,9 +536,7 @@ export function buildTasksCommand(name = 'tasks'): Command {
     .option('--import-only')
     .action(() => run(() => out(g(), { ok: true, jsonl: openStore(g()).jsonlPath }, () => `JSONL is up to date: ${openStore(g()).jsonlPath}`)));
 
-  cmd
-    .command('where')
-    .action(() => run(() => console.log(openStore(g()).dir)));
+  cmd.command('where').action(() => run(() => console.log(openStore(g()).dir)));
 
   return cmd;
 }

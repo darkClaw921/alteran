@@ -84,17 +84,37 @@ Phases are epics titled "Phase N: <name>"; tasks of a phase use parent=<epic id>
     name: 'tasks_list',
     category: 'tasks',
     readOnly: true,
-    description: 'List tracker issues. Default: open issues. Filter by status, type, parent epic, or search text.',
+    description: 'List tracker issues. Default: open issues, priority order. Filter by status, type, parent epic, priority, label, assignee or search text; order with sort/reverse.',
     schema: z.object({
       status: z.array(z.string()).optional().describe('e.g. ["open","in_progress"]; omit for all non-closed'),
       type: z.array(z.string()).optional(),
+      priority: z.array(z.number().int()).optional().describe('0-4'),
+      label: z.array(z.string()).optional(),
+      assignee: z.string().optional(),
       parent: z.string().optional().describe('Epic id or phase number'),
       query: z.string().optional(),
       all: z.boolean().optional().describe('Include closed issues'),
+      sort: z.enum(['priority', 'created', 'updated', 'status', 'id', 'title']).optional(),
+      reverse: z.boolean().optional(),
       limit: z.number().int().optional(),
     }),
     summarize: (i: { parent?: string; query?: string }) => i.parent ?? i.query ?? '',
-    run: (input: { status?: string[]; type?: string[]; parent?: string; query?: string; all?: boolean; limit?: number }, ctx) =>
+    run: (
+      input: {
+        status?: string[];
+        type?: string[];
+        priority?: number[];
+        label?: string[];
+        assignee?: string;
+        parent?: string;
+        query?: string;
+        all?: boolean;
+        sort?: 'priority' | 'created' | 'updated' | 'status' | 'id' | 'title';
+        reverse?: boolean;
+        limit?: number;
+      },
+      ctx,
+    ) =>
       guard((c) => {
         const s = store(c);
         const parent = input.parent ? (s.findPhase(input.parent)?.id ?? input.parent) : undefined;
@@ -174,7 +194,10 @@ Phases are epics titled "Phase N: <name>"; tasks of a phase use parent=<epic id>
       guard((c) => {
         const s = store(c);
         const closed = input.ids.map((id) => s.close(id, input.reason, { force: input.force }));
-        const epics = s.epics().filter((e) => e.eligibleForClose).map((e) => e.epic.id);
+        const epics = s
+          .epics()
+          .filter((e) => e.eligibleForClose)
+          .map((e) => e.epic.id);
         const hint = epics.length ? `\nEpics with all children closed (close them when the phase is verified): ${epics.join(', ')}` : '';
         return ok(closed.map((i) => `Closed ${i.id}: ${i.title}`).join('\n') + hint, { summary: `Closed ${closed.map((i) => i.id).join(', ')}` });
       })(ctx),
@@ -182,11 +205,10 @@ Phases are epics titled "Phase N: <name>"; tasks of a phase use parent=<epic id>
   {
     name: 'tasks_dep_add',
     category: 'tasks',
-    description: 'Add dependencies: each {issue, depends_on, type?}. type defaults to "blocks" (issue cannot start until depends_on is closed). Cycles are rejected.',
+    description:
+      'Add dependencies: each {issue, depends_on, type?}. type defaults to "blocks" (issue cannot start until depends_on is closed). Cycles are rejected.',
     schema: z.object({
-      deps: z
-        .array(z.object({ issue: z.string(), depends_on: z.string(), type: z.enum(DEP_TYPES).optional() }))
-        .min(1),
+      deps: z.array(z.object({ issue: z.string(), depends_on: z.string(), type: z.enum(DEP_TYPES).optional() })).min(1),
     }),
     summarize: (i: { deps: unknown[] }) => `${i.deps.length} edge(s)`,
     run: (input: { deps: Array<{ issue: string; depends_on: string; type?: string }> }, ctx) =>
@@ -230,7 +252,12 @@ Phases are epics titled "Phase N: <name>"; tasks of a phase use parent=<epic id>
         const kids = s.children(e.id);
         const info = s.blockInfo();
         return ok(
-          [issueDetails(s, e), '', 'Tasks:', ...kids.map((k) => `  ${issueLine(k)}${info.get(k.id)?.blocked ? `  (blocked by ${info.get(k.id)!.blockers.join(', ')})` : ''}`)].join('\n'),
+          [
+            issueDetails(s, e),
+            '',
+            'Tasks:',
+            ...kids.map((k) => `  ${issueLine(k)}${info.get(k.id)?.blocked ? `  (blocked by ${info.get(k.id)!.blockers.join(', ')})` : ''}`),
+          ].join('\n'),
           { summary: `${e.id}: ${kids.length} tasks` },
         );
       })(ctx),

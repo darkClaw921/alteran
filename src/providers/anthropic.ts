@@ -1,14 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type {
-  ContentBlock,
-  Message,
-  Provider,
-  ProviderRequest,
-  StopReason,
-  StreamEvent,
-  ToolResultBlock,
-  Usage,
-} from '../types.js';
+import type { ContentBlock, Message, Provider, ProviderRequest, StopReason, StreamEvent, ToolResultBlock, Usage } from '../types.js';
 import { emptyUsage } from '../types.js';
 import { parseToolJson } from './json.js';
 
@@ -22,7 +13,7 @@ function supportsAdaptive(model: string): boolean {
   return !/haiku|claude-3|sonnet-4-5|opus-4-5|opus-4-1|opus-4-0|sonnet-4-0|claude-(opus|sonnet)-4$/.test(model);
 }
 
-function toParam(block: ContentBlock): Anthropic.ContentBlockParam | null {
+export function toAnthropicParam(block: ContentBlock): Anthropic.ContentBlockParam | null {
   switch (block.type) {
     case 'text':
       return block.text ? { type: 'text', text: block.text } : null;
@@ -31,6 +22,11 @@ function toParam(block: ContentBlock): Anthropic.ContentBlockParam | null {
         type: 'image',
         source: { type: 'base64', media_type: block.mediaType as 'image/png', data: block.data },
       };
+    case 'document':
+      // Anthropic reads PDFs natively, but only that media type; anything else is dropped rather
+      // than sent as something the API would reject outright.
+      if (block.mediaType !== 'application/pdf') return null;
+      return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: block.data } };
     case 'thinking':
       if (block.redacted) return { type: 'redacted_thinking', data: block.redacted };
       if (!block.signature) return null;
@@ -48,21 +44,18 @@ function toolResultParam(block: ToolResultBlock): Anthropic.ToolResultBlockParam
   const content =
     typeof block.content === 'string'
       ? block.content
-      : block.content.map((c) =>
-          c.type === 'text'
-            ? ({ type: 'text', text: c.text } as const)
-            : ({
-                type: 'image',
-                source: { type: 'base64', media_type: c.mediaType as 'image/png', data: c.data },
-              } as const),
-        );
+      : block.content.map((c) => {
+          if (c.type === 'text') return { type: 'text', text: c.text } as const;
+          if (c.type === 'document') return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: c.data } } as const;
+          return { type: 'image', source: { type: 'base64', media_type: c.mediaType as 'image/png', data: c.data } } as const;
+        });
   return { type: 'tool_result', tool_use_id: block.toolUseId, content, is_error: block.isError || undefined };
 }
 
 function toMessages(messages: Message[]): Anthropic.MessageParam[] {
   const out: Anthropic.MessageParam[] = [];
   for (const m of messages) {
-    const content = m.content.map(toParam).filter((b): b is Anthropic.ContentBlockParam => b !== null);
+    const content = m.content.map(toAnthropicParam).filter((b): b is Anthropic.ContentBlockParam => b !== null);
     if (content.length === 0) continue;
     out.push({ role: m.role, content });
   }
@@ -86,6 +79,20 @@ export class AnthropicProvider implements Provider {
     this.client = new Anthropic({ apiKey: opts.apiKey, baseURL: opts.baseURL, maxRetries: 3, timeout: 15 * 60_000 });
   }
 
+  /**
+   * The provider's own count for exactly what would be sent, tools included. Anthropic charges
+   * nothing for it, which is why it is worth asking instead of estimating from characters.
+   */
+  async countTokens(req: ProviderRequest): Promise<number> {
+    const res = await this.client.messages.countTokens({
+      model: req.model,
+      system: req.system,
+      messages: toMessages(req.messages),
+      tools: req.tools.length ? (req.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema })) as Anthropic.Tool[]) : undefined,
+    });
+    return res.input_tokens;
+  }
+
   async *stream(req: ProviderRequest): AsyncIterable<StreamEvent> {
     const adaptive = supportsAdaptive(req.model);
     const tools: Anthropic.Tool[] = req.tools.map((t) => ({
@@ -94,13 +101,17 @@ export class AnthropicProvider implements Provider {
       input_schema: t.inputSchema as Anthropic.Tool.InputSchema,
       eager_input_streaming: true,
     }));
+    // Tools render before system, so the marker on the system block caches tools and system
+    // together; the top-level field then follows the growing conversation on its own. Both carry
+    // the same TTL — a longer entry may precede a shorter one, never the other way round.
+    const cache = { type: 'ephemeral', ...(req.cacheTtl === '1h' ? { ttl: '1h' as const } : {}) } as const;
     const params: Anthropic.MessageCreateParamsStreaming = {
       model: req.model,
       max_tokens: req.maxTokens,
-      system: [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }],
+      system: [{ type: 'text', text: req.system, cache_control: cache }],
       messages: toMessages(req.messages),
       tools: tools.length ? tools : undefined,
-      cache_control: { type: 'ephemeral' },
+      cache_control: cache,
       stream: true,
     };
     if (adaptive) {

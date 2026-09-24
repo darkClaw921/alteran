@@ -1,9 +1,5 @@
 import OpenAI from 'openai';
-import type {
-  ResponseCreateParamsStreaming,
-  ResponseInputItem,
-  FunctionTool,
-} from 'openai/resources/responses/responses';
+import type { ResponseCreateParamsStreaming, ResponseInputItem, FunctionTool } from 'openai/resources/responses/responses';
 import type { ContentBlock, Message, Provider, ProviderRequest, StopReason, StreamEvent, Usage } from '../types.js';
 import { emptyUsage, textOf } from '../types.js';
 import { parseToolJson } from './json.js';
@@ -28,22 +24,33 @@ function toInput(messages: Message[]): ResponseInputItem[] {
       }
       continue;
     }
-    const parts: Array<{ type: 'input_text'; text: string } | { type: 'input_image'; image_url: string; detail: 'auto' }> = [];
+    const parts: Array<
+      { type: 'input_text'; text: string } | { type: 'input_image'; image_url: string; detail: 'auto' } | { type: 'input_file'; filename: string; file_data: string }
+    > = [];
     for (const b of m.content) {
       if (b.type === 'tool_result') {
+        const media = typeof b.content === 'string' ? [] : b.content.filter((c) => c.type !== 'text');
         out.push({ type: 'function_call_output', call_id: b.toolUseId, output: (b.isError ? 'ERROR: ' : '') + textOf(b.content) });
-        if (typeof b.content !== 'string') {
-          for (const c of b.content) {
-            if (c.type === 'image') parts.push({ type: 'input_image', image_url: `data:${c.mediaType};base64,${c.data}`, detail: 'auto' });
-          }
-        }
+        // A tool result that carried an attachment sends it as its own input item; the tool output
+        // itself is text, so the picture would otherwise be lost.
+        for (const c of media) parts.push(c.type === 'image' ? imagePart(c.mediaType, c.data) : documentPart(c.mediaType, c.data, c.name));
       } else if (b.type === 'text' && b.text) parts.push({ type: 'input_text', text: b.text });
-      else if (b.type === 'image') parts.push({ type: 'input_image', image_url: `data:${b.mediaType};base64,${b.data}`, detail: 'auto' });
+      else if (b.type === 'image') parts.push(imagePart(b.mediaType, b.data));
+      else if (b.type === 'document') parts.push(documentPart(b.mediaType, b.data, b.name));
     }
     if (parts.length) out.push({ role: 'user', content: parts });
   }
   return out;
 }
+
+const imagePart = (mediaType: string, data: string) => ({ type: 'input_image' as const, image_url: `data:${mediaType};base64,${data}`, detail: 'auto' as const });
+
+/** Responses takes a file as a data URL plus a filename it can show the model. */
+const documentPart = (mediaType: string, data: string, name?: string) => ({
+  type: 'input_file' as const,
+  filename: name ?? (mediaType === 'application/pdf' ? 'document.pdf' : 'attachment'),
+  file_data: `data:${mediaType};base64,${data}`,
+});
 
 export class OpenAIResponsesProvider implements Provider {
   readonly id: string;
@@ -72,6 +79,9 @@ export class OpenAIResponsesProvider implements Provider {
       store: false,
       stream: true,
     };
+    // OpenAI caches prefixes automatically; the key only steers requests that share one onto the
+    // same cache shard, which matters once several agents run against the same account.
+    if (req.cacheKey) params.prompt_cache_key = req.cacheKey;
     if (reasoningModel) {
       params.reasoning = {
         effort: req.reasoning === 'off' ? 'minimal' : (req.reasoning ?? 'medium'),

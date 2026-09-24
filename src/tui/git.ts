@@ -68,7 +68,14 @@ export async function readGit(cwd: string): Promise<GitInfo> {
       f.added = Number(out.split('\t')[0]) || 0;
     }),
   );
-  const repoName = remote.trim() ? remote.trim().replace(/\.git$/, '').split(/[/:]/).slice(-2).join('/') : path.basename(top);
+  const repoName = remote.trim()
+    ? remote
+        .trim()
+        .replace(/\.git$/, '')
+        .split(/[/:]/)
+        .slice(-2)
+        .join('/')
+    : path.basename(top);
   return {
     isRepo: true,
     repo: repoName,

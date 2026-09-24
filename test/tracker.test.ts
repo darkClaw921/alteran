@@ -94,7 +94,11 @@ describe('tracker store', () => {
     fs.appendFileSync(store.jsonlPath, JSON.stringify(raw) + '\n');
     store.reload(true);
     store.create({ title: 'New one' });
-    const lines = fs.readFileSync(store.jsonlPath, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const lines = fs
+      .readFileSync(store.jsonlPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
     const imported = lines.find((l) => l.id === 'demo-zzz');
     expect(imported.some_future_field).toEqual({ nested: true });
     expect(imported.content_hash).toBe('abc');
@@ -151,5 +155,67 @@ describe.runIf(hasBr)('beads_rust (br) interop', () => {
     expect(ids).not.toContain(b.id);
     const show = execFileSync('br', ['show', b.id], { cwd: dir, encoding: 'utf8' });
     expect(show).toContain(a.id);
+  });
+});
+
+describe('listing, sorting and IO', () => {
+  it('filters by priority, label and assignee', () => {
+    store.create({ title: 'urgent', priority: 0, labels: ['ui'], assignee: 'igor' });
+    store.create({ title: 'later', priority: 3, labels: ['api'] });
+    expect(store.list({ priority: [0] }).map((i) => i.title)).toEqual(['urgent']);
+    expect(store.list({ label: ['ui'] }).map((i) => i.title)).toEqual(['urgent']);
+    expect(store.list({ assignee: 'igor' }).map((i) => i.title)).toEqual(['urgent']);
+    // A label list is an "all of these", not an "any of these".
+    expect(store.list({ label: ['ui', 'api'] })).toHaveLength(0);
+  });
+
+  it('sorts by the requested field and can reverse it', () => {
+    store.create({ title: 'B task', priority: 2 });
+    store.create({ title: 'A task', priority: 1 });
+    expect(store.list({ sort: 'title' }).map((i) => i.title)).toEqual(['A task', 'B task']);
+    expect(store.list({ sort: 'title', reverse: true }).map((i) => i.title)).toEqual(['B task', 'A task']);
+    expect(store.list({ sort: 'priority' }).map((i) => i.priority)).toEqual([1, 2]);
+    expect(store.list({ sort: 'priority', reverse: true }).map((i) => i.priority)).toEqual([2, 1]);
+  });
+
+  it('is stable between runs, so two listings diff cleanly', () => {
+    for (let i = 0; i < 5; i++) store.create({ title: `same priority ${i}`, priority: 2 });
+    const first = store.list({ sort: 'priority' }).map((i) => i.id);
+    const second = store.list({ sort: 'priority' }).map((i) => i.id);
+    expect(second).toEqual(first);
+  });
+
+  it('rejects an unknown sort field instead of silently ignoring it', () => {
+    store.create({ title: 'x' });
+    // The CLI passes the flag straight through, so a typo falls back to the default order rather
+    // than crashing mid-listing.
+    expect(store.list({ sort: 'nonsense' as never }).map((i) => i.title)).toEqual(['x']);
+  });
+
+  it('exports a document that imports back to the same issues', () => {
+    const epic = store.create({ title: 'Phase 1: X', type: 'epic' });
+    store.create({ title: 'child', parent: epic.id, labels: ['a'], description: 'body' });
+    const text = store.exportJsonl();
+    expect(text.trim().split('\n')).toHaveLength(2);
+    // Round-trip into a fresh tracker: nothing is lost, invented or duplicated.
+    const other = TrackerStore.init(fs.mkdtempSync(path.join(os.tmpdir(), 'alteran-import-')), 'demo');
+    const result = other.importJsonl(text);
+    expect(result).toMatchObject({ added: 2, updated: 0 });
+    expect(other.all(true).map((i) => i.id).sort()).toEqual(store.all(true).map((i) => i.id).sort());
+    const child = other.list().find((i) => i.title === 'child')!;
+    expect(child.labels).toEqual(['a']);
+    expect(child.description).toBe('body');
+    // Importing the same text again updates rather than duplicating.
+    expect(other.importJsonl(text)).toMatchObject({ added: 0, updated: 2 });
+  });
+
+  it('reports a bad line instead of failing the whole import', () => {
+    store.create({ title: 'kept', priority: 1 });
+    const good = store.exportJsonl().trim();
+    const result = store.importJsonl(['not json at all', '{"id":"x"}', good].join('\n'));
+    expect(result.added + result.updated).toBe(1);
+    expect(result.skipped).toHaveLength(2);
+    expect(result.skipped[0].reason).toBeTruthy();
+    expect(result.skipped[1].reason).toContain('missing id or title');
   });
 });

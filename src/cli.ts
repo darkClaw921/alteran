@@ -5,6 +5,14 @@ import { loadSettings, type PermissionMode } from './config/settings.js';
 import { buildTasksCommand } from './tracker/cli.js';
 import { mark, paint, section, setColorEnabled } from './util/color.js';
 
+// React's development build records a performance mark and a measure for every update it makes, and
+// Node keeps every entry of its performance timeline for the life of the process. A terminal that
+// repaints several times a second then grows by megabytes a second until the heap gives out. The
+// production build emits none of that and renders faster; an explicit NODE_ENV still wins, so
+// `NODE_ENV=development pnpm dev` keeps React's warnings. This must stay above the dynamic imports —
+// React reads it when it is first loaded, and after that nothing can change it.
+if (!process.env.NODE_ENV) process.env.NODE_ENV = 'production';
+
 // Providers, MCP and the agent runtime are imported where they are used: loading them up front
 // costs a few hundred milliseconds before the boot animation could even start.
 
@@ -114,16 +122,26 @@ program
   .description('List saved sessions for this project')
   .action(async () => {
     const { SessionStore } = await import('./core/session.js');
-    const list = SessionStore.list(projectRoot(process.cwd()));
+    const root = projectRoot(process.cwd());
+    const list = SessionStore.list(root);
     if (!list.length) return console.log(paint.muted('No saved sessions for this project.'));
     console.log(section('SESSIONS', 80));
     for (const [i, s] of list.entries()) {
       console.log(
         `${i === 0 ? mark.on() : paint.dim('[ ]')} ${paint.cyan(s.id.slice(0, 8))}  ${paint.muted(s.updatedAt.toISOString().slice(0, 16).replace('T', ' '))}  ${paint.dim(String(s.messages).padStart(4) + ' msgs')}  ${s.title}`,
       );
+      // Agents the session delegated to keep their own transcripts next to it.
+      for (const a of SessionStore.agents(root, s.id)) {
+        console.log(`    ${paint.dim('|')} ${paint.bronze(a.id)}  ${paint.dim(String(a.messages).padStart(4) + ' msgs')}  ${paint.muted(a.title)}`);
+      }
     }
     console.log(
-      paint.dim(`\nContinue the latest: `) + paint.bold('alteran --continue') + paint.dim('   pick one: ') + paint.bold('alteran --resume') + paint.dim('   by id: ') + paint.bold(`alteran --resume ${list[0].id.slice(0, 8)}`),
+      paint.dim(`\nContinue the latest: `) +
+        paint.bold('alteran --continue') +
+        paint.dim('   pick one: ') +
+        paint.bold('alteran --resume') +
+        paint.dim('   by id: ') +
+        paint.bold(`alteran --resume ${list[0].id.slice(0, 8)}`),
     );
   });
 
@@ -159,7 +177,8 @@ program
           const here = pinned?.[0] === r.name;
           console.log(
             `${here ? mark.on() : paint.dim('[ ]')} ${paint.cyan(r.name.padEnd(26))} ${paint.muted(fmtContext(r.contextWindow).padStart(5))}  ${paint.gold(fmtPrice(r.pricing))}` +
-              (r.ru ? paint.green('  data-in-RU') : '') + (r.moderated ? paint.amber('  moderated') : ''),
+              (r.ru ? paint.green('  data-in-RU') : '') +
+              (r.moderated ? paint.amber('  moderated') : ''),
           );
         }
         console.log(paint.dim(`\nPin with: /model ${provider}:${o.routes}@<provider>[,<fallback>…]  (or @auto to unpin)`));
@@ -171,7 +190,9 @@ program
       for (const m of models) {
         const here = `${provider}:${m.id}` === current.id;
         const price = m.pricing ? `${fmtMoney(m.pricing.in, m.pricing.currency)} / ${fmtMoney(m.pricing.out, m.pricing.currency)}` : '—';
-        console.log(`${here ? mark.on() : paint.dim('[ ]')} ${paint.cyan(m.id.padEnd(44))} ${paint.muted(fmtContext(m.contextWindow).padStart(5))}  ${paint.gold(price)}`);
+        console.log(
+          `${here ? mark.on() : paint.dim('[ ]')} ${paint.cyan(m.id.padEnd(44))} ${paint.muted(fmtContext(m.contextWindow).padStart(5))}  ${paint.gold(price)}`,
+        );
       }
       if (!models.length) console.log(paint.dim('Nothing matches that filter.'));
     } catch (e) {
@@ -211,7 +232,9 @@ program
       const ref = reg.resolve();
       const info = reg.info(ref);
       const route = reg.route(ref);
-      console.log(`${paint.muted('default:')} ${paint.gold(ref.id)}   ${paint.muted(`context ${Math.round(info.contextWindow / 1000)}k, max output ${Math.round(info.maxOutput / 1000)}k`)}`);
+      console.log(
+        `${paint.muted('default:')} ${paint.gold(ref.id)}   ${paint.muted(`context ${Math.round(info.contextWindow / 1000)}k, max output ${Math.round(info.maxOutput / 1000)}k`)}`,
+      );
       if (route) console.log(`${paint.muted('route:  ')} ${paint.cyan(route.join(', '))}`);
       const key = await new ModelCatalog(reg).key(ref.provider, true);
       if (key) {
@@ -253,7 +276,9 @@ program
     console.log(
       `${paint.muted('permission rules:')} ${paint.green(`${ext.rules.allow.length} allow`)}  ${paint.red(`${ext.rules.deny.length} deny`)}  ${paint.amber(`${ext.rules.ask.length} ask`)}`,
     );
-    console.log(`${paint.muted('instructions:')} ${ext.instructions.length ? paint.text(ext.instructions.map((i) => i.file).join(', ')) : paint.dim('(none)')}`);
+    console.log(
+      `${paint.muted('instructions:')} ${ext.instructions.length ? paint.text(ext.instructions.map((i) => i.file).join(', ')) : paint.dim('(none)')}`,
+    );
     for (const w of ext.warnings) console.log(`${mark.bad()} ${paint.amber(w)}`);
   });
 

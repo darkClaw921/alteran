@@ -1,6 +1,7 @@
+import { projectRoot } from './config/paths.js';
 import type { PermissionMode, Settings } from './config/settings.js';
 import { runSlashCommand } from './core/commands.js';
-import { contextBreakdown, formatContext } from './core/context.js';
+import { contextBreakdown, exactContextLine, formatContext } from './core/context.js';
 import { SessionStore } from './core/session.js';
 import { InterruptedError } from './core/agent.js';
 import { Runtime } from './core/runtime.js';
@@ -22,14 +23,39 @@ const dim = (s: string) => (process.stderr.isTTY ? `\x1b[2m${s}\x1b[0m` : s);
 const err = (s: string) => (process.stderr.isTTY ? paint.red(s) : s);
 
 export async function runHeadless(opts: HeadlessOptions): Promise<number> {
-  const rt = await Runtime.create({ cwd: opts.cwd, model: opts.model, mode: opts.mode, reasoning: opts.reasoning, resume: opts.resume, noMcp: opts.mcp === false });
+  // An id nobody has must say so rather than quietly opening a fresh session: the user asked to
+  // continue a specific conversation and would otherwise read the answer into the wrong history.
+  if (opts.resume && opts.resume !== 'last') {
+    const wanted = opts.resume;
+    if (!SessionStore.list(projectRoot(opts.cwd)).some((s) => s.id.startsWith(wanted))) {
+      process.stderr.write(`No session in this project starts with "${wanted}".\n`);
+      return 1;
+    }
+  }
+  const rt = await Runtime.create({
+    cwd: opts.cwd,
+    model: opts.model,
+    mode: opts.mode,
+    reasoning: opts.reasoning,
+    resume: opts.resume,
+    noMcp: opts.mcp === false,
+  });
   for (const e of rt.settingsErrors) process.stderr.write(`settings: ${e}\n`);
   if (opts.mcp !== false && rt.mcp.servers.size) {
     await Promise.race([rt.connectMcp(), new Promise((r) => setTimeout(r, 15_000))]);
   }
   const controller = new AbortController();
-  const onSig = () => controller.abort();
+  const onSig = () => {
+    rt.agents.stopAll();
+    controller.abort();
+  };
   process.on('SIGINT', onSig);
+
+  /** Background agents that finished while nothing was running; folded back in before exit. */
+  const wakes: string[] = [];
+  rt.onWake = (agentId, text) => {
+    if (agentId === 'main') wakes.push(text);
+  };
 
   let lastWasDelta = false;
   rt.bus.on((ev) => {
@@ -87,7 +113,11 @@ export async function runHeadless(opts: HeadlessOptions): Promise<number> {
         console.log(`Resumed session ${id.slice(0, 8)} (${messages} messages)`);
         return code;
       }
-      if (res.kind === 'ui' && res.action === 'context') console.log(formatContext(contextBreakdown(rt)));
+      // The estimate always prints; the exact count joins it when the provider can give one.
+      if (res.kind === 'ui' && res.action === 'context') {
+        console.log(formatContext(contextBreakdown(rt)));
+        console.log(await exactContextLine(rt));
+      }
       else if (res.kind === 'info') console.log(res.text);
       else if (res.kind === 'error') {
         console.error(res.text);
@@ -96,7 +126,15 @@ export async function runHeadless(opts: HeadlessOptions): Promise<number> {
       else if (res.kind === 'prompt') prompt = res.text;
       if (res.kind !== 'prompt') return code;
     }
-    const final = await rt.main.send(prompt, controller.signal);
+    let final = await rt.main.send(prompt, controller.signal);
+    // A background agent launched during the run still owes a report; exiting now would drop it.
+    while (!controller.signal.aborted && (wakes.length || rt.agents.running.length)) {
+      if (!wakes.length) {
+        await Promise.race(rt.agents.running.map((r) => r.turn));
+        continue;
+      }
+      final = await rt.main.send(wakes.splice(0).join('\n\n'), controller.signal);
+    }
     if (opts.json) process.stdout.write(JSON.stringify({ type: 'result', text: final, usage: rt.main.usage, session: rt.session.id }) + '\n');
   } catch (e) {
     if (e instanceof InterruptedError) {
